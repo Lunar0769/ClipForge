@@ -1,4 +1,4 @@
-# Shorts Generator — Design Spec
+# ClipForge — Design Spec
 
 **Date:** 2026-10-03
 **Status:** Approved in brainstorming, pending written-spec review
