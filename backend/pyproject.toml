@@ -26,6 +26,10 @@ pythonpath = ["."]
 testpaths = ["tests"]
 asyncio_mode = "auto"
 asyncio_default_fixture_loop_scope = "function"
+# Suppress Starlette's httpx deprecation warning (httpx2 is a drop-in replacement, no action needed)
+filterwarnings = [
+    "ignore:Using .* with .starlette.testclient. is deprecated",
+]
 markers = [
     "gpu: needs an NVIDIA GPU and the downloaded whisper model",
     "network: needs internet access",
