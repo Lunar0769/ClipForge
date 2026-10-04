@@ -4,7 +4,7 @@ $root = Split-Path -Parent $PSScriptRoot
 Write-Host "ClipForge setup" -ForegroundColor Magenta
 foreach ($cmd in "uv", "node", "npm", "ffmpeg", "ffprobe") {
     if (-not (Get-Command $cmd -ErrorAction SilentlyContinue)) {
-        throw "Missing '$cmd'. Install it and re-run. (uv: https://docs.astral.sh/uv/ · FFmpeg 8 full build: winget install Gyan.FFmpeg)"
+        throw "Missing '$cmd'. Install it and re-run. (uv: https://docs.astral.sh/uv/ - FFmpeg 8 full build: winget install Gyan.FFmpeg)"
     }
 }
 
