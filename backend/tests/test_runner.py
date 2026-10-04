@@ -55,6 +55,7 @@ async def test_cancel_stops_before_next_stage(make_ctx):
     with pytest.raises(StageCancelled):
         await asyncio.wait_for(task, 2)
     assert after.runs == 0
+    assert ("a", "cancelled") in statuses(ctx.bus, ctx.job_id)
 
 
 async def test_gpu_stages_are_serialized_across_jobs(make_ctx):
@@ -85,3 +86,57 @@ async def test_on_progress_reports_weighted_overall_progress(make_ctx):
         on_progress=lambda stage, overall: calls.append((stage, overall)),
     )
     assert calls == [("a", 0.0), ("a", 0.25), ("b", 0.25), ("b", 1.0)]
+
+
+async def test_cancel_while_waiting_for_gpu_lock(make_ctx):
+    gpu_lock = asyncio.Lock()
+    await gpu_lock.acquire()  # Hold the lock to block the stage
+
+    ctx = make_ctx()
+    gpu_stage = RecordingStage("gpu", uses_gpu=True)
+
+    task = asyncio.create_task(run(
+        [gpu_stage],
+        ctx,
+        gpu_lock=gpu_lock,
+        video_locks=VideoLocks(),
+    ))
+    await asyncio.sleep(0.1)  # Let it try to acquire
+    ctx.cancel_event.set()  # Cancel while waiting
+    gpu_lock.release()  # Release lock
+
+    with pytest.raises(StageCancelled):
+        await asyncio.wait_for(task, 2)
+    assert gpu_stage.runs == 0
+    assert ("gpu", "cancelled") in statuses(ctx.bus, ctx.job_id)
+
+
+async def test_cached_after_first_job_on_same_video(make_ctx):
+    """Two jobs on same video_id: first runs stage, second caches when is_done becomes True."""
+
+    class FlipDoneStage(RecordingStage):
+        def __init__(self, name):
+            super().__init__(name)
+            self.done_after_run = False
+
+        def is_done(self, ctx):
+            return self.done_after_run
+
+        def run(self, ctx):
+            super().run(ctx)
+            self.done_after_run = True
+
+    stage = FlipDoneStage("reuse")
+    locks = VideoLocks()
+    c1, c2 = make_ctx(), make_ctx()
+    c1.video_id = c2.video_id = "samevideo"
+
+    await run([stage], c1, video_locks=locks)
+    await run([stage], c2, video_locks=locks)
+
+    assert stage.runs == 1
+    assert stage.done_after_run
+    c1_statuses = statuses(c1.bus, c1.job_id)
+    c2_statuses = statuses(c2.bus, c2.job_id)
+    assert ("reuse", "done") in c1_statuses
+    assert ("reuse", "cached") in c2_statuses

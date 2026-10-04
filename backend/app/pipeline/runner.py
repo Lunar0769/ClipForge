@@ -30,13 +30,14 @@ async def run_pipeline(
     total = sum(s.weight for s in stages) or 1.0
     completed = 0.0
     for stage in stages:
-        ctx.check_cancelled()
         if on_progress:
             on_progress(stage.name, completed / total)
         video_lock = video_locks.get(ctx.video_id) if ctx.video_id else contextlib.nullcontext()
         gpu = gpu_lock if stage.uses_gpu else contextlib.nullcontext()
         try:
+            ctx.check_cancelled()
             async with video_lock, gpu:
+                ctx.check_cancelled()
                 # Checked inside the locks: another job may have just produced the artifact.
                 if await asyncio.to_thread(stage.is_done, ctx):
                     ctx.emit("stage", stage=stage.name, status="cached", progress=1.0)
