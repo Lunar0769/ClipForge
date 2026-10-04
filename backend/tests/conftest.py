@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from app.config import Settings
+from app.db import make_engine
 
 
 @pytest.fixture
@@ -13,3 +14,8 @@ def settings(tmp_path: Path) -> Settings:
         workspace_dir=tmp_path / "work space ü",
         models_dir=tmp_path / "models",
     )
+
+
+@pytest.fixture
+def engine(settings):
+    return make_engine(settings.db_url)
