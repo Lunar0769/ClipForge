@@ -1,0 +1,70 @@
+@import "tailwindcss";
+@import "lenis/dist/lenis.css";
+
+@theme {
+  --font-display: "Clash Display", "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, monospace;
+
+  --color-violet-brand: #8b5cf6;
+  --color-indigo-brand: #6366f1;
+  --color-cyan-brand: #22d3ee;
+  --color-ember: #f97316;
+  --color-gold: #facc15;
+
+  --animate-shimmer: shimmer 1.6s linear infinite;
+  @keyframes shimmer {
+    from { background-position: 200% 0; }
+    to { background-position: -200% 0; }
+  }
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-fg: var(--fg);
+  --color-muted: var(--muted);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-border: var(--border);
+}
+
+:root,
+[data-theme="dark"] {
+  --bg: #07060d;
+  --fg: #f4f3ff;
+  --muted: #9b9bb4;
+  --surface: rgb(255 255 255 / 0.04);
+  --surface-2: rgb(255 255 255 / 0.08);
+  --border: rgb(255 255 255 / 0.1);
+  color-scheme: dark;
+}
+
+[data-theme="light"] {
+  --bg: #f7f6fb;
+  --fg: #120f22;
+  --muted: #5d5a73;
+  --surface: rgb(18 15 34 / 0.04);
+  --surface-2: rgb(18 15 34 / 0.07);
+  --border: rgb(18 15 34 / 0.12);
+  color-scheme: light;
+}
+
+html, body { background: var(--bg); color: var(--fg); }
+body { font-family: var(--font-sans); -webkit-font-smoothing: antialiased; }
+::selection { background: rgb(139 92 246 / 0.35); }
+
+.text-gradient {
+  background: linear-gradient(90deg, #8b5cf6, #6366f1 55%, #22d3ee);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
