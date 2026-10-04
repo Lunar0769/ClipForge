@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, useSpring, useTransform } from "motion/react";
-import { useEffect, useRef } from "react";
+import { useEffect, useState } from "react";
 import { useParams } from "react-router";
 import { NotFound } from "../../components/NotFound";
 import { PageTransition } from "../../components/PageTransition";
@@ -8,7 +8,7 @@ import { Skeleton } from "../../components/Skeleton";
 import { StatusChip } from "../../components/StatusChip";
 import { api } from "../../lib/api";
 import { projectTitle } from "../../lib/format";
-import { estimateEta, formatEta, overallProgress } from "../../lib/progress";
+import { estimateEtaFromBaseline, formatEta, type EtaBaseline, overallProgress } from "../../lib/progress";
 import { isTerminal, type JobStatus } from "../../lib/types";
 import { useNow } from "../../lib/useNow";
 import { ErrorPanel } from "./ErrorPanel";
@@ -55,9 +55,14 @@ export default function ProcessingPage() {
   const cancel = useMutation({ mutationFn: (jobId: string) => api.cancelJob(jobId) });
 
   const now = useNow(1000);
-  const startedAt = useRef<number | null>(null);
-  if (status === "running" && startedAt.current === null) startedAt.current = now;
-  if (status !== "running") startedAt.current = null;
+  const progress = overallProgress(stagesQuery.data ?? [], view);
+  const [baseline, setBaseline] = useState<EtaBaseline | null>(null);
+  const jobId = job?.id;
+  useEffect(() => setBaseline(null), [jobId]);
+  useEffect(() => {
+    if (status !== "running") setBaseline(null);
+    else if (!baseline || progress < baseline.progress) setBaseline({ t: Date.now(), progress });
+  }, [status, progress, baseline]);
 
   if (projectQuery.isError) return <NotFound message="We couldn't find this project." />;
   const project = projectQuery.data;
@@ -71,8 +76,7 @@ export default function ProcessingPage() {
   }
 
   const stages = stagesQuery.data ?? [];
-  const progress = overallProgress(stages, view);
-  const eta = startedAt.current !== null ? estimateEta(startedAt.current, now, progress) : null;
+  const eta = estimateEtaFromBaseline(baseline, now, progress);
   const lines = view.transcript.length ? view.transcript : (transcriptQuery.data?.segments ?? []);
   const active = status === "running" || status === "queued";
 
@@ -134,6 +138,11 @@ export default function ProcessingPage() {
             onRetry={() => retry.mutate()}
             pending={retry.isPending}
           />
+        )}
+        {(retry.isError || cancel.isError) && (
+          <p role="alert" className="mt-4 text-sm text-red-400">
+            {((retry.error ?? cancel.error) as Error).message}
+          </p>
         )}
         {status === "cancelled" && (
           <ErrorPanel title="Cancelled" message="This job was cancelled." hint={null} onRetry={() => retry.mutate()} pending={retry.isPending} />

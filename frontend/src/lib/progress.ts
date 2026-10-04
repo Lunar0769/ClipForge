@@ -15,11 +15,18 @@ export function overallProgress(stages: StageInfo[], view: JobViewState): number
   return stages.reduce((sum, s) => sum + s.weight * stageFraction(view.stages[s.name]), 0) / total;
 }
 
-export function estimateEta(startedAtMs: number, nowMs: number, progress: number): number | null {
-  if (progress < 0.03 || progress >= 1) return null;
-  const elapsed = (nowMs - startedAtMs) / 1000;
-  if (elapsed <= 0) return null;
-  return Math.round((elapsed * (1 - progress)) / progress);
+export interface EtaBaseline {
+  t: number;
+  progress: number;
+}
+
+/** ETA from progress this client actually watched: needs at least 2% of observed movement. */
+export function estimateEtaFromBaseline(baseline: EtaBaseline | null, nowMs: number, progress: number): number | null {
+  if (!baseline || progress >= 1) return null;
+  const gained = progress - baseline.progress;
+  const elapsed = (nowMs - baseline.t) / 1000;
+  if (gained < 0.02 || elapsed <= 0) return null;
+  return Math.round((elapsed * (1 - progress)) / gained);
 }
 
 export function formatEta(seconds: number | null): string {

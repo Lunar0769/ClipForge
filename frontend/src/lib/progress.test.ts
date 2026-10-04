@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { initialJobViewState } from "../features/processing/jobEvents";
-import { estimateEta, formatEta, overallProgress } from "./progress";
+import { estimateEtaFromBaseline, formatEta, overallProgress } from "./progress";
 
 const stages = [
   { name: "ingest", label: "Importing video", weight: 1 },
@@ -23,10 +23,13 @@ describe("progress", () => {
     expect(overallProgress(stages, { ...initialJobViewState, jobStatus: "succeeded" })).toBe(1);
   });
 
-  it("estimates time left", () => {
-    expect(estimateEta(0, 10_000, 0.5)).toBe(10);
-    expect(estimateEta(0, 10_000, 0.01)).toBeNull();
-    expect(estimateEta(0, 10_000, 1)).toBeNull();
+  it("estimates time left from observed progress only", () => {
+    const base = { t: 0, progress: 0.5 };
+    expect(estimateEtaFromBaseline(base, 10_000, 0.51)).toBeNull();
+    expect(estimateEtaFromBaseline(base, 10_000, 0.75)).toBe(10);
+    expect(estimateEtaFromBaseline(base, 10_000, 1)).toBeNull();
+    expect(estimateEtaFromBaseline(null, 10_000, 0.75)).toBeNull();
+    expect(estimateEtaFromBaseline(base, 0, 0.75)).toBeNull();
   });
 
   it("formats eta", () => {

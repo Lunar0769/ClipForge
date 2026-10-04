@@ -8,6 +8,7 @@ export function useJobEvents(jobId: string | undefined): JobViewState {
   const [state, dispatch] = useReducer(jobEventsReducer, initialJobViewState);
 
   useEffect(() => {
+    dispatch({ type: "reset" });
     if (!jobId) return;
     let socket: WebSocket | null = null;
     let closed = false;
@@ -22,7 +23,13 @@ export function useJobEvents(jobId: string | undefined): JobViewState {
         dispatch({ type: "reset" });
       };
       socket.onmessage = (message) => {
-        const event = JSON.parse(message.data) as JobEvent;
+        if (closed) return;
+        let event: JobEvent;
+        try {
+          event = JSON.parse(message.data) as JobEvent;
+        } catch {
+          return;
+        }
         // The server keeps the socket open after the terminal event; don't reconnect (and replay) once finished.
         if (event.type === "job" && isTerminal(event.status as JobStatus)) finished = true;
         dispatch(event);
