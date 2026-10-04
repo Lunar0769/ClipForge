@@ -1,3 +1,4 @@
+import subprocess
 from pathlib import Path
 
 import pytest
@@ -54,3 +55,46 @@ def make_ctx(settings, workspace, engine, bus):
         )
 
     return _make
+
+
+def _ffmpeg(*args: str) -> None:
+    subprocess.run(["ffmpeg", "-y", "-v", "error", *args], check=True)
+
+
+@pytest.fixture(scope="session")
+def media_dir(tmp_path_factory) -> Path:
+    directory = tmp_path_factory.mktemp("media") / "dir with spaces ü"
+    directory.mkdir()
+    return directory
+
+
+@pytest.fixture(scope="session")
+def sample_video(media_dir) -> Path:
+    out = media_dir / "sample vidéo.mp4"
+    _ffmpeg(
+        "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=3",
+        "-f", "lavfi", "-i", "sine=frequency=440:duration=3",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-shortest", str(out),
+    )
+    return out
+
+
+@pytest.fixture(scope="session")
+def silent_video(media_dir) -> Path:
+    out = media_dir / "silent.mp4"
+    _ffmpeg(
+        "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=3",
+        "-f", "lavfi", "-i", "anullsrc=r=44100:cl=mono",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a", "aac", "-t", "3", str(out),
+    )
+    return out
+
+
+@pytest.fixture(scope="session")
+def no_audio_video(media_dir) -> Path:
+    out = media_dir / "no audio.mp4"
+    _ffmpeg(
+        "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=30:duration=2",
+        "-c:v", "libx264", "-pix_fmt", "yuv420p", str(out),
+    )
+    return out
