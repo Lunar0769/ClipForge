@@ -36,7 +36,8 @@ export function jobEventsReducer(state: JobViewState, action: JobAction): JobVie
           [event.stage]: {
             status: (event.status as StageStatus) ?? prev?.status ?? "running",
             progress: event.progress ?? prev?.progress ?? 0,
-            message: event.message ?? (event.status === "running" ? null : prev?.message ?? null),
+            // A new or finished stage drops the last progress note ("Extracting audio…"); a failure keeps context.
+            message: event.message ?? (event.status === "failed" ? prev?.message ?? null : null),
           },
         },
       };
@@ -59,6 +60,8 @@ export function jobEventsReducer(state: JobViewState, action: JobAction): JobVie
         return { ...state, transcript: [...state.transcript, line] };
       }
       if (data.kind === "language") return { ...state, language: String(data.language) };
+      // The transcriber fell back to another device/precision and starts over.
+      if (data.kind === "restart") return { ...state, transcript: [] };
       return state;
     }
     case "log":

@@ -8,13 +8,15 @@ import { Skeleton } from "../../components/Skeleton";
 import { StatusChip } from "../../components/StatusChip";
 import { api } from "../../lib/api";
 import { projectTitle } from "../../lib/format";
-import { estimateEtaFromBaseline, formatEta, type EtaBaseline, overallProgress } from "../../lib/progress";
+import { estimateEtaFromBaseline, formatEta, type EtaBaseline, overallProgress, stagesFromJob } from "../../lib/progress";
 import { isTerminal, type JobStatus } from "../../lib/types";
 import { useNow } from "../../lib/useNow";
 import { ErrorPanel } from "./ErrorPanel";
 import { PipelineConstellation } from "./PipelineConstellation";
 import { TranscriptStream } from "./TranscriptStream";
 import { useJobEvents } from "./useJobEvents";
+
+const NO_SPEECH = "No speech was detected in this video.";
 
 function AnimatedPercent({ value }: { value: number }) {
   const spring = useSpring(value, { stiffness: 120, damping: 20 });
@@ -55,7 +57,10 @@ export default function ProcessingPage() {
   const cancel = useMutation({ mutationFn: (jobId: string) => api.cancelJob(jobId) });
 
   const now = useNow(1000);
-  const progress = overallProgress(stagesQuery.data ?? [], view);
+  const stages = stagesQuery.data ?? [];
+  // No live events (e.g. the API restarted since the job ran): rebuild the stages from the REST job.
+  const stageStates = Object.keys(view.stages).length || !job ? view.stages : stagesFromJob(stages, job);
+  const progress = overallProgress(stages, { jobStatus: status ?? null, stages: stageStates });
   const [baseline, setBaseline] = useState<EtaBaseline | null>(null);
   const jobId = job?.id;
   useEffect(() => setBaseline(null), [jobId]);
@@ -75,9 +80,13 @@ export default function ProcessingPage() {
     );
   }
 
-  const stages = stagesQuery.data ?? [];
   const eta = estimateEtaFromBaseline(baseline, now, progress);
-  const lines = view.transcript.length ? view.transcript : (transcriptQuery.data?.segments ?? []);
+  // Once the job succeeded the saved transcript is complete; replayed live partials may be truncated.
+  const saved = status === "succeeded" ? transcriptQuery.data : undefined;
+  const lines = saved ? saved.segments : view.transcript;
+  const logs = saved && saved.segments.length === 0 && !view.logs.includes(NO_SPEECH)
+    ? [...view.logs, NO_SPEECH]
+    : view.logs;
   const active = status === "running" || status === "queued";
 
   return (
@@ -128,7 +137,7 @@ export default function ProcessingPage() {
           </div>
         </div>
 
-        <PipelineConstellation stages={stages} state={view.stages} />
+        <PipelineConstellation stages={stages} state={stageStates} />
 
         {status === "failed" && (
           <ErrorPanel
@@ -152,7 +161,7 @@ export default function ProcessingPage() {
           lines={lines}
           language={view.language ?? transcriptQuery.data?.language ?? null}
           live={status === "running"}
-          logs={view.logs}
+          logs={logs}
         />
       </div>
     </PageTransition>

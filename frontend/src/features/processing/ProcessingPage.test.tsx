@@ -73,3 +73,50 @@ it("shows a friendly message for unknown projects", async () => {
   renderWithProviders(<ProcessingPage />, route);
   expect(await screen.findByText(/couldn't find this project/i)).toBeInTheDocument();
 });
+
+it("rebuilds the view from the REST job when there are no live events (API restarted)", async () => {
+  vi.mocked(api.getProject).mockResolvedValue(
+    makeProject({ title: "Silent", latest_job: makeJob({ status: "succeeded", stage: "transcribe", progress: 1 }) }),
+  );
+  vi.mocked(api.transcript).mockResolvedValue({ language: "en", duration_s: 3, segments: [] });
+  vi.mocked(useJobEvents).mockReturnValue(initialJobViewState);
+  renderWithProviders(<ProcessingPage />, route);
+
+  expect(await screen.findByText("No speech was detected in this video.")).toBeInTheDocument();
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "100");
+  expect(screen.getByText("Importing video").closest("li")).toHaveAttribute("data-status", "done");
+  expect(screen.getByText("Transcribing speech").closest("li")).toHaveAttribute("data-status", "done");
+});
+
+it("shows the failed stage from the REST job when there are no live events", async () => {
+  vi.mocked(api.getProject).mockResolvedValue(
+    makeProject({ latest_job: makeJob({ status: "failed", stage: "transcribe", progress: 0.4, error: "GPU fell over" }) }),
+  );
+  vi.mocked(useJobEvents).mockReturnValue(initialJobViewState);
+  renderWithProviders(<ProcessingPage />, route);
+
+  expect(await screen.findByText("GPU fell over")).toBeInTheDocument();
+  expect(await screen.findByText("Importing video")).toBeInTheDocument();
+  expect(screen.getByText("Importing video").closest("li")).toHaveAttribute("data-status", "done");
+  expect(screen.getByText("Transcribing speech").closest("li")).toHaveAttribute("data-status", "failed");
+  expect(screen.getByRole("progressbar")).toHaveAttribute("aria-valuenow", "40");
+});
+
+it("prefers the saved transcript over streamed partials once the job succeeded", async () => {
+  vi.mocked(api.getProject).mockResolvedValue(
+    makeProject({ latest_job: makeJob({ status: "succeeded", stage: "transcribe", progress: 1 }) }),
+  );
+  vi.mocked(api.transcript).mockResolvedValue({
+    language: "en", duration_s: 3,
+    segments: [{ id: 0, start: 0, end: 1, text: "First full line." }, { id: 1, start: 1, end: 2, text: "Second full line." }],
+  });
+  vi.mocked(useJobEvents).mockReturnValue({
+    ...initialJobViewState,
+    jobStatus: "succeeded",
+    transcript: [{ start: 1, end: 2, text: "Second full line." }], // replayed history kept only the tail
+  });
+  renderWithProviders(<ProcessingPage />, route);
+
+  expect(await screen.findByText("First full line.")).toBeInTheDocument();
+  expect(screen.getAllByText("Second full line.")).toHaveLength(1);
+});

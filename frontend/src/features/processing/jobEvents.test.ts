@@ -20,6 +20,28 @@ describe("jobEventsReducer", () => {
     expect(done.stages.ingest.progress).toBe(1);
   });
 
+  it("clears the progress message when a stage finishes", () => {
+    const extracting = reduce(
+      ev({ type: "stage", stage: "ingest", status: "running", progress: 0 }),
+      ev({ type: "progress", stage: "ingest", progress: 0.9, message: "Extracting audio…" }),
+    );
+    for (const status of ["done", "cached", "cancelled"]) {
+      const s = jobEventsReducer(extracting, ev({ type: "stage", stage: "ingest", status, progress: 1 }));
+      expect(s.stages.ingest.message).toBeNull();
+    }
+    const failed = jobEventsReducer(extracting, ev({ type: "stage", stage: "ingest", status: "failed", message: "Bad video" }));
+    expect(failed.stages.ingest.message).toBe("Bad video");
+  });
+
+  it("drops streamed segments when transcription restarts on a fallback", () => {
+    const s = reduce(
+      ev({ type: "partial", stage: "transcribe", data: { kind: "segment", start: 0, end: 1, text: "Hello." } }),
+      ev({ type: "partial", stage: "transcribe", data: { kind: "restart" } }),
+      ev({ type: "partial", stage: "transcribe", data: { kind: "segment", start: 0, end: 1, text: "Hello." } }),
+    );
+    expect(s.transcript.map((l) => l.text)).toEqual(["Hello."]);
+  });
+
   it("appends transcript segments and language", () => {
     const s = reduce(
       ev({ type: "partial", stage: "transcribe", data: { kind: "segment", start: 0, end: 1, text: "Hello." } }),

@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import { Upload } from "lucide-react";
 import { motion } from "motion/react";
-import { useRef, useState, type DragEvent } from "react";
+import { useEffect, useRef, useState, type DragEvent } from "react";
 import { api } from "../../lib/api";
 import { fileExtension } from "../../lib/format";
 import type { Project } from "../../lib/types";
@@ -12,6 +12,19 @@ export function DropZone({ onUploaded, className }: { onUploaded: (p: Project) =
   const [dragging, setDragging] = useState(false);
   const [progress, setProgress] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // A file dropped anywhere else on the page would make the browser open it and leave the app.
+  useEffect(() => {
+    const swallowFileDrop = (e: globalThis.DragEvent) => {
+      if (Array.from(e.dataTransfer?.types ?? []).includes("Files")) e.preventDefault();
+    };
+    window.addEventListener("dragover", swallowFileDrop);
+    window.addEventListener("drop", swallowFileDrop);
+    return () => {
+      window.removeEventListener("dragover", swallowFileDrop);
+      window.removeEventListener("drop", swallowFileDrop);
+    };
+  }, []);
 
   const handleFile = async (file: File) => {
     if (!UPLOAD_EXTENSIONS.includes(fileExtension(file.name))) {
