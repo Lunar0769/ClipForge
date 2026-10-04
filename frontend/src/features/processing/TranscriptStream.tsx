@@ -1,0 +1,61 @@
+import { motion } from "motion/react";
+import { useEffect, useRef } from "react";
+import { Skeleton } from "../../components/Skeleton";
+import { formatTimestamp } from "../../lib/format";
+import type { TranscriptLine } from "../../lib/types";
+
+interface Props {
+  lines: TranscriptLine[];
+  language: string | null;
+  live: boolean;
+  logs: string[];
+}
+
+export function TranscriptStream({ lines, language, live, logs }: Props) {
+  const endRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (live) endRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [lines.length, live]);
+
+  return (
+    <section className="mt-10 rounded-3xl border border-border bg-surface p-5 sm:p-6">
+      <div className="mb-4 flex items-center justify-between gap-3">
+        <h2 className="font-display text-xl font-semibold">Transcript</h2>
+        <div className="flex items-center gap-2 text-xs text-muted">
+          {language && <span className="rounded-full bg-surface-2 px-3 py-1 uppercase tracking-wider">{language}</span>}
+          {lines.length > 0 && <span>{lines.length} segments</span>}
+        </div>
+      </div>
+      {logs.map((log) => (
+        <p key={log} className="mb-3 rounded-xl bg-gold/10 px-4 py-2 text-sm text-gold">{log}</p>
+      ))}
+      {lines.length === 0 ? (
+        live ? (
+          <div className="space-y-3" aria-label="Listening">
+            {[80, 65, 90].map((w) => <Skeleton key={w} className="h-4" />)}
+            <p className="pt-2 text-sm text-muted">Listening…</p>
+          </div>
+        ) : (
+          <p className="text-sm text-muted">The transcript will appear here as speech is recognised.</p>
+        )
+      ) : (
+        <div className="max-h-[28rem] overflow-y-auto pr-2" data-lenis-prevent>
+          <ul className="space-y-2">
+            {lines.map((line, i) => (
+              <motion.li
+                key={`${line.start}-${i}`}
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="flex gap-4 text-sm leading-relaxed"
+              >
+                <span className="w-12 shrink-0 pt-0.5 font-mono text-xs tabular-nums text-muted">{formatTimestamp(line.start)}</span>
+                <span>{line.text}</span>
+              </motion.li>
+            ))}
+          </ul>
+          <div ref={endRef} />
+        </div>
+      )}
+    </section>
+  );
+}
