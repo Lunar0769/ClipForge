@@ -12,9 +12,13 @@ interface Props {
 }
 
 export function TranscriptStream({ lines, language, live, logs }: Props) {
-  const endRef = useRef<HTMLDivElement>(null);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const pinnedToBottom = useRef(true);
+  // Follow new lines inside the transcript box only (never scroll the page),
+  // and only while the reader hasn't scrolled up to read earlier lines.
   useEffect(() => {
-    if (live) endRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    const box = scrollRef.current;
+    if (live && box && pinnedToBottom.current) box.scrollTop = box.scrollHeight;
   }, [lines.length, live]);
 
   return (
@@ -32,14 +36,26 @@ export function TranscriptStream({ lines, language, live, logs }: Props) {
       {lines.length === 0 ? (
         live ? (
           <div className="space-y-3" aria-label="Listening">
-            {[80, 65, 90].map((w) => <Skeleton key={w} className="h-4" />)}
+            {[80, 65, 90].map((w) => (
+              <div key={w} style={{ width: `${w}%` }}>
+                <Skeleton className="h-4" />
+              </div>
+            ))}
             <p className="pt-2 text-sm text-muted">Listening…</p>
           </div>
         ) : (
           <p className="text-sm text-muted">The transcript will appear here as speech is recognised.</p>
         )
       ) : (
-        <div className="max-h-[28rem] overflow-y-auto pr-2" data-lenis-prevent>
+        <div
+          ref={scrollRef}
+          onScroll={(e) => {
+            const box = e.currentTarget;
+            pinnedToBottom.current = box.scrollHeight - box.scrollTop - box.clientHeight < 48;
+          }}
+          className="max-h-[28rem] scroll-smooth overflow-y-auto pr-2"
+          data-lenis-prevent
+        >
           <ul className="space-y-2">
             {lines.map((line, i) => (
               <motion.li
@@ -53,7 +69,6 @@ export function TranscriptStream({ lines, language, live, logs }: Props) {
               </motion.li>
             ))}
           </ul>
-          <div ref={endRef} />
         </div>
       )}
     </section>

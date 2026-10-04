@@ -78,7 +78,7 @@ export default function ShaderBackground() {
   const [supported] = useState(canUseWebGL);
   if (reduced || !supported) return <StaticGradient />;
   return (
-    <div aria-hidden="true" className="absolute inset-0 opacity-90 [html[data-theme=light]_&]:opacity-25">
+    <div aria-hidden="true" className="absolute inset-0 opacity-90 [html[data-theme=light]_&]:opacity-70 [html[data-theme=light]_&]:[filter:invert(1)_hue-rotate(180deg)]">
       <Canvas dpr={[1, 1.5]} gl={{ antialias: false, powerPreference: "low-power" }}>
         <NebulaPlane />
       </Canvas>

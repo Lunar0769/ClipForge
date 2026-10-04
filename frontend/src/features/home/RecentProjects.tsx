@@ -28,13 +28,13 @@ export function RecentProjects() {
         className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3"
       >
         {data.slice(0, 9).map((project) => (
-          <motion.li key={project.id} variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } }}>
+          <motion.li key={project.id} className="min-w-0" variants={{ hidden: { opacity: 0, y: 16 }, show: { opacity: 1, y: 0 } }}>
             <Link
               to={`/projects/${project.id}`}
               className="group block h-full rounded-2xl border border-border bg-surface p-5 transition hover:-translate-y-0.5 hover:border-violet-brand/50 hover:bg-surface-2"
             >
               <div className="flex items-start justify-between gap-3">
-                <span className="line-clamp-2 font-medium">{projectTitle(project)}</span>
+                <span className="line-clamp-2 min-w-0 font-medium [overflow-wrap:anywhere]">{projectTitle(project)}</span>
                 {project.latest_job && <StatusChip status={project.latest_job.status} />}
               </div>
               <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
