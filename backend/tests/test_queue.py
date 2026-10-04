@@ -1,4 +1,5 @@
 import asyncio
+import threading
 import time
 
 import pytest
@@ -113,3 +114,29 @@ async def test_gpu_stages_never_overlap(make_queue, engine):
     for j in jobs:
         await wait_status(engine, j.id, JobStatus.succeeded)
     assert gpu.runs == 2 and gpu.max_active == 1
+
+
+async def test_cancel_racing_with_worker_start_still_cancels(make_queue, engine, monkeypatch):
+    """cancel() lands between the worker reading the queued job and marking it running."""
+    slow = RecordingStage("slow", duration=1.0)
+    q = await make_queue([slow], concurrency=1)
+    job = new_job(engine)
+    real_get_job = repo.get_job
+    fired = []
+
+    def get_job_with_concurrent_cancel(eng, job_id):
+        result = real_get_job(eng, job_id)
+        if not fired and asyncio.current_task() in q._workers:  # the worker, not wait_status()
+            fired.append(True)
+            canceller = threading.Thread(target=lambda: fired.append(q.cancel(job_id)))
+            canceller.start()
+            canceller.join(0.3)  # an unguarded cancel() completes here, before the worker marks the job running
+        return result
+
+    monkeypatch.setattr(repo, "get_job", get_job_with_concurrent_cancel)
+    q.submit(job.id)
+    await wait_status(engine, job.id, JobStatus.cancelled, JobStatus.succeeded, timeout=5)
+    await asyncio.sleep(0.2)
+    assert repo.get_job(engine, job.id).status is JobStatus.cancelled
+    assert fired == [True, True]
+    assert slow.runs == 0

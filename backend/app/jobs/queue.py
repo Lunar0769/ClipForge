@@ -43,6 +43,9 @@ class JobQueue:
         self._queue: asyncio.Queue[str] | None = None
         self._workers: list[asyncio.Task] = []
         self._cancels: dict[str, threading.Event] = {}
+        # cancel() runs in a request thread; this makes "is it queued? -> cancel it" atomic with
+        # the worker's "is it queued? -> start it", so a job can't be both cancelled and started.
+        self._start_lock = threading.Lock()
         self._gpu_lock: asyncio.Lock | None = None
         self._video_locks = VideoLocks()
 
@@ -65,16 +68,17 @@ class JobQueue:
         self._queue.put_nowait(job_id)
 
     def cancel(self, job_id: str) -> bool:
-        event = self._cancels.get(job_id)
-        if event is not None:
-            event.set()
-            return True
-        job = repo.get_job(self._engine, job_id)
-        if job is not None and job.status is JobStatus.queued:
+        with self._start_lock:
+            event = self._cancels.get(job_id)
+            if event is not None:
+                event.set()
+                return True
+            job = repo.get_job(self._engine, job_id)
+            if job is None or job.status is not JobStatus.queued:
+                return False
             repo.update_job(self._engine, job_id, status=JobStatus.cancelled)
-            self._publish_job(job_id, JobStatus.cancelled, message="Cancelled before it started.")
-            return True
-        return False
+        self._publish_job(job_id, JobStatus.cancelled, message="Cancelled before it started.")
+        return True
 
     def _publish_job(self, job_id: str, status: JobStatus, message: str | None = None, hint: str | None = None) -> None:
         self.bus.publish(JobEvent(
@@ -102,21 +106,28 @@ class JobQueue:
             return False
         return True
 
-    async def _run_job(self, job_id: str) -> None:
-        job = repo.get_job(self._engine, job_id)
-        if job is None or job.status is not JobStatus.queued:
-            return
-        project = repo.get_project(self._engine, job.project_id)
-        if project is None:
-            self._update_job(job_id, status=JobStatus.failed, error="The project was deleted.")
-            return
+    def _start(self, job_id: str) -> PipelineContext | None:
+        """Atomically move a queued job to running; None if it was cancelled/started/deleted meanwhile."""
+        with self._start_lock:
+            job = repo.get_job(self._engine, job_id)
+            if job is None or job.status is not JobStatus.queued:
+                return None
+            project = repo.get_project(self._engine, job.project_id)
+            if project is None:
+                self._update_job(job_id, status=JobStatus.failed, error="The project was deleted.")
+                return None
+            ctx = PipelineContext(
+                project_id=project.id, job_id=job_id, settings=self._settings,
+                workspace=self._workspace, engine=self._engine, bus=self.bus, video_id=project.video_id,
+            )
+            self._cancels[job_id] = ctx.cancel_event
+            self._update_job(job_id, status=JobStatus.running, progress=0.0, error=None, error_hint=None)
+        return ctx
 
-        ctx = PipelineContext(
-            project_id=project.id, job_id=job_id, settings=self._settings,
-            workspace=self._workspace, engine=self._engine, bus=self.bus, video_id=project.video_id,
-        )
-        self._cancels[job_id] = ctx.cancel_event
-        self._update_job(job_id, status=JobStatus.running, progress=0.0, error=None, error_hint=None)
+    async def _run_job(self, job_id: str) -> None:
+        ctx = self._start(job_id)
+        if ctx is None:
+            return
         self._publish_job(job_id, JobStatus.running)
 
         def on_progress(stage: str, overall: float) -> None:

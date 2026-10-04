@@ -1,6 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
@@ -25,6 +26,14 @@ class Settings(BaseSettings):
 
     job_concurrency: int = 2
     cors_origins: list[str] = ["http://localhost:5173", "http://127.0.0.1:5173"]
+
+    @field_validator("workspace_dir", "models_dir", "ytdlp_cookies_file", mode="after")
+    @classmethod
+    def _relative_to_repo_root(cls, value: Path | None) -> Path | None:
+        # .env says e.g. ./workspace; that must not depend on which directory the API was started from.
+        if value is None or value.is_absolute():
+            return value
+        return REPO_ROOT / value
 
     @property
     def db_url(self) -> str:
