@@ -1,0 +1,38 @@
+[project]
+name = "clipforge"
+version = "0.1.0"
+description = "ClipForge — turn long videos into viral shorts"
+requires-python = ">=3.13,<3.14"
+dependencies = [
+    "fastapi>=0.142",
+    "uvicorn[standard]>=0.54",
+    "sqlmodel>=0.0.47",
+    "pydantic-settings>=2.15",
+    "python-multipart>=0.0.20",
+    "yt-dlp[default]>=2026.8.19",
+    "faster-whisper>=1.2.1",
+    "av>=14,<17",  # faster-whisper 1.2.1 calls av.open(metadata_errors=...), removed in av 17+
+    "nvidia-cublas-cu12>=12.4; sys_platform == 'win32' or sys_platform == 'linux'",
+    "nvidia-cudnn-cu12>=9,<10; sys_platform == 'win32' or sys_platform == 'linux'",
+]
+
+[dependency-groups]
+dev = ["pytest>=9.1", "pytest-asyncio>=1.4", "httpx>=0.28"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "function"
+# Suppress Starlette's httpx deprecation warning (httpx2 is a drop-in replacement, no action needed)
+filterwarnings = [
+    "ignore:Using .* with .starlette.testclient. is deprecated",
+]
+markers = [
+    "gpu: needs an NVIDIA GPU and the downloaded whisper model",
+    "network: needs internet access",
+]
+addopts = "-m 'not gpu and not network'"

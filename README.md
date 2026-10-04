@@ -109,7 +109,7 @@ Missing optional keys simply disable that feature — jobs never fail because of
 
 ## 🗺️ Roadmap
 
-- [ ] **Phase 1 — Foundation:** setup script, API + job queue, download & transcription, UI shell
+- [x] **Phase 1 — Foundation:** setup script, API + job queue, download & transcription, UI shell
 - [ ] **Phase 2 — Clip engine:** moment scoring, smart reframing, animated captions, NVENC render, gallery
 - [ ] **Phase 3 — SEO pack:** captions, hashtags, titles, export bundle
 - [ ] **Phase 4 — Editor:** timeline trim, transcript editing, style & layout panels
