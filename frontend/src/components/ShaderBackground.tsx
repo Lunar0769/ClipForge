@@ -58,13 +58,19 @@ function NebulaPlane() {
   );
 }
 
+let webglSupport: boolean | null = null;
+
 function canUseWebGL(): boolean {
+  if (webglSupport !== null) return webglSupport;
   try {
     const canvas = document.createElement("canvas");
-    return !!(canvas.getContext("webgl2") || canvas.getContext("webgl"));
+    const gl = canvas.getContext("webgl2") || canvas.getContext("webgl");
+    webglSupport = !!gl;
+    gl?.getExtension("WEBGL_lose_context")?.loseContext();
   } catch {
-    return false;
+    webglSupport = false;
   }
+  return webglSupport;
 }
 
 export default function ShaderBackground() {

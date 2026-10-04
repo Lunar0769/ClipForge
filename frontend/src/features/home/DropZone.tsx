@@ -61,7 +61,7 @@ export function DropZone({ onUploaded, className }: { onUploaded: (p: Project) =
           <span className="text-sm font-medium">
             {progress === null ? "Drop a video file or click to browse" : `Uploading… ${Math.round(progress * 100)}%`}
           </span>
-          <span className="text-xs text-muted">MP4, MKV, MOV, WebM · any length</span>
+          <span className="text-xs text-muted">MP4, MKV, MOV, WebM, M4V, AVI · any length</span>
           {progress !== null && (
             <motion.span
               className="absolute inset-x-0 bottom-0 h-1 origin-left bg-gradient-to-r from-violet-brand to-cyan-brand"

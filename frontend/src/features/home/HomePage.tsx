@@ -1,8 +1,9 @@
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Sparkles } from "lucide-react";
-import { motion } from "motion/react";
+import { motion, useReducedMotion } from "motion/react";
 import { lazy, Suspense } from "react";
 import { useNavigate } from "react-router";
+import { BackgroundBoundary } from "../../components/BackgroundBoundary";
 import { PageTransition } from "../../components/PageTransition";
 import { StaticGradient } from "../../components/StaticGradient";
 import { api } from "../../lib/api";
@@ -16,6 +17,7 @@ const ShaderBackground = lazy(() => import("../../components/ShaderBackground"))
 
 export default function HomePage() {
   const navigate = useNavigate();
+  const reduced = useReducedMotion();
   const queryClient = useQueryClient();
   const open = (project: Project) => {
     void queryClient.invalidateQueries({ queryKey: ["projects"] });
@@ -27,9 +29,15 @@ export default function HomePage() {
     <PageTransition>
       <section className="relative isolate overflow-hidden">
         <div className="absolute inset-0 -z-10">
-          <Suspense fallback={<StaticGradient />}>
-            <ShaderBackground />
-          </Suspense>
+          {reduced ? (
+            <StaticGradient />
+          ) : (
+            <BackgroundBoundary>
+              <Suspense fallback={<StaticGradient />}>
+                <ShaderBackground />
+              </Suspense>
+            </BackgroundBoundary>
+          )}
           <div className="absolute inset-0 bg-gradient-to-b from-transparent via-bg/30 to-bg" />
         </div>
         <div className="mx-auto flex max-w-4xl flex-col items-center px-4 pb-20 pt-20 text-center sm:px-6 sm:pt-28">
@@ -56,6 +64,7 @@ export default function HomePage() {
             pending={create.isPending}
             serverError={create.error?.message ?? null}
             onSubmit={(url) => create.mutate(url)}
+            onEdit={() => create.reset()}
           />
           <div className="my-6 flex w-full max-w-2xl items-center gap-4 text-xs uppercase tracking-[0.2em] text-muted">
             <span className="h-px flex-1 bg-border" />or<span className="h-px flex-1 bg-border" />

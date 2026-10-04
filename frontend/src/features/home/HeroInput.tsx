@@ -9,10 +9,11 @@ interface Props {
   onSubmit: (url: string) => void;
   pending: boolean;
   serverError: string | null;
+  onEdit?: () => void;
   className?: string;
 }
 
-export function HeroInput({ onSubmit, pending, serverError, className }: Props) {
+export function HeroInput({ onSubmit, pending, serverError, onEdit, className }: Props) {
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const shown = error ?? serverError;
@@ -40,6 +41,7 @@ export function HeroInput({ onSubmit, pending, serverError, className }: Props) 
             onChange={(e) => {
               setValue(e.target.value);
               setError(null);
+              onEdit?.();
             }}
             placeholder="Paste a YouTube link…"
             autoComplete="off"
