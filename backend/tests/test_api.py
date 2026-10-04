@@ -1,6 +1,4 @@
-import shutil
 import time
-from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -194,3 +192,30 @@ def test_concurrent_uploads_of_same_video_transcribe_once(make_client, sample_vi
     video_ids = {client.get(f"/api/projects/{p['id']}").json()["video_id"] for p in projects}
     assert len(video_ids) == 1
     assert transcribe.runs == 1
+
+
+def test_websocket_unsubscribes_after_client_disconnects(make_client):
+    client = make_client([FakeIngestStage(), FakeTranscribeStage()])
+    project = client.post("/api/projects", json={"url": "https://youtu.be/a"}).json()
+    job_id = project["latest_job"]["id"]
+    wait_job(client, job_id, "succeeded")
+    bus = client.app.state.services.bus
+    with client.websocket_connect(f"/api/jobs/{job_id}/events") as ws:
+        collect_until_job_end(ws)
+        assert len(bus._subscribers[job_id]) == 1
+    deadline = time.monotonic() + 3
+    while bus._subscribers[job_id] and time.monotonic() < deadline:
+        time.sleep(0.02)
+    assert not bus._subscribers[job_id]
+
+
+def test_delete_project_while_job_running_is_quiet(make_client, caplog):
+    client = make_client([FakeIngestStage(), FakeTranscribeStage(duration=2)])
+    project = client.post("/api/projects", json={"url": "https://youtu.be/a"}).json()
+    wait_job(client, project["latest_job"]["id"], "running")
+    time.sleep(0.1)
+    assert client.delete(f"/api/projects/{project['id']}").status_code == 204
+    time.sleep(0.5)  # let the worker notice the cancel and unwind
+    other = client.post("/api/projects", json={"url": "https://youtu.be/b"}).json()
+    wait_job(client, other["latest_job"]["id"], "succeeded", timeout=15)
+    assert not [r for r in caplog.records if "Unhandled error" in r.getMessage() or r.exc_info]

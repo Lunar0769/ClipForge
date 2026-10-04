@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter, Depends, HTTPException, WebSocket, WebSocketDisconnect
 
 from app import repo
@@ -36,11 +38,22 @@ async def job_events(websocket: WebSocket, job_id: str) -> None:
     svc: Services = websocket.app.state.services
     await websocket.accept()
     queue = svc.bus.subscribe(job_id)
+    # Not closed after the terminal event: the frontend reconnects on close.
+    getter = asyncio.ensure_future(queue.get())
+    receiver = asyncio.ensure_future(websocket.receive())
     try:
         while True:
-            event = await queue.get()
-            await websocket.send_text(event.model_dump_json())
+            await asyncio.wait({getter, receiver}, return_when=asyncio.FIRST_COMPLETED)
+            if receiver.done():
+                if receiver.exception() is not None or receiver.result()["type"] == "websocket.disconnect":
+                    break
+                receiver = asyncio.ensure_future(websocket.receive())  # ignore client chatter
+            if getter.done():
+                await websocket.send_text(getter.result().model_dump_json())
+                getter = asyncio.ensure_future(queue.get())
     except WebSocketDisconnect:
         pass
     finally:
-        svc.bus.unsubscribe(job_id, queue)
+        svc.bus.unsubscribe(job_id, queue)  # first: must survive the handler being cancelled below
+        for task in (getter, receiver):
+            task.cancel()

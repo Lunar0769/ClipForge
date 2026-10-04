@@ -4,6 +4,7 @@ import threading
 from collections.abc import Callable
 
 from sqlalchemy import Engine
+from sqlalchemy.orm.exc import StaleDataError
 
 from app import repo
 from app.config import Settings
@@ -92,13 +93,22 @@ class JobQueue:
             finally:
                 self._queue.task_done()
 
+    def _update_job(self, job_id: str, **fields) -> bool:
+        """Update the job row; False means the job was deleted (e.g. its project was removed) mid-run."""
+        try:
+            repo.update_job(self._engine, job_id, **fields)
+        except (KeyError, StaleDataError):
+            logger.info("Job %s no longer exists (project deleted); dropping update", job_id)
+            return False
+        return True
+
     async def _run_job(self, job_id: str) -> None:
         job = repo.get_job(self._engine, job_id)
         if job is None or job.status is not JobStatus.queued:
             return
         project = repo.get_project(self._engine, job.project_id)
         if project is None:
-            repo.update_job(self._engine, job_id, status=JobStatus.failed, error="The project was deleted.")
+            self._update_job(job_id, status=JobStatus.failed, error="The project was deleted.")
             return
 
         ctx = PipelineContext(
@@ -106,11 +116,11 @@ class JobQueue:
             workspace=self._workspace, engine=self._engine, bus=self.bus, video_id=project.video_id,
         )
         self._cancels[job_id] = ctx.cancel_event
-        repo.update_job(self._engine, job_id, status=JobStatus.running, progress=0.0, error=None, error_hint=None)
+        self._update_job(job_id, status=JobStatus.running, progress=0.0, error=None, error_hint=None)
         self._publish_job(job_id, JobStatus.running)
 
         def on_progress(stage: str, overall: float) -> None:
-            repo.update_job(self._engine, job_id, stage=stage, progress=overall)
+            self._update_job(job_id, stage=stage, progress=overall)
 
         assert self._gpu_lock is not None
         try:
@@ -119,19 +129,19 @@ class JobQueue:
                 gpu_lock=self._gpu_lock, video_locks=self._video_locks, on_progress=on_progress,
             )
         except StageCancelled:
-            repo.update_job(self._engine, job_id, status=JobStatus.cancelled)
-            self._publish_job(job_id, JobStatus.cancelled, message="Cancelled.")
+            if self._update_job(job_id, status=JobStatus.cancelled):
+                self._publish_job(job_id, JobStatus.cancelled, message="Cancelled.")
         except StageError as exc:
-            repo.update_job(self._engine, job_id, status=JobStatus.failed, error=exc.message, error_hint=exc.hint)
-            self._publish_job(job_id, JobStatus.failed, message=exc.message, hint=exc.hint)
+            if self._update_job(job_id, status=JobStatus.failed, error=exc.message, error_hint=exc.hint):
+                self._publish_job(job_id, JobStatus.failed, message=exc.message, hint=exc.hint)
         except Exception as exc:
             logger.exception("Job %s failed", job_id)
             error = f"{type(exc).__name__}: {exc}"
             hint = "This looks like a bug. Check the API window's log, then press Retry."
-            repo.update_job(self._engine, job_id, status=JobStatus.failed, error=error, error_hint=hint)
-            self._publish_job(job_id, JobStatus.failed, message=error, hint=hint)
+            if self._update_job(job_id, status=JobStatus.failed, error=error, error_hint=hint):
+                self._publish_job(job_id, JobStatus.failed, message=error, hint=hint)
         else:
-            repo.update_job(self._engine, job_id, status=JobStatus.succeeded, progress=1.0)
-            self._publish_job(job_id, JobStatus.succeeded)
+            if self._update_job(job_id, status=JobStatus.succeeded, progress=1.0):
+                self._publish_job(job_id, JobStatus.succeeded)
         finally:
             self._cancels.pop(job_id, None)
