@@ -4,6 +4,7 @@ import pytest
 
 from app.config import Settings
 from app.db import make_engine
+from app.workspace import Workspace
 
 
 @pytest.fixture
@@ -19,3 +20,8 @@ def settings(tmp_path: Path) -> Settings:
 @pytest.fixture
 def engine(settings):
     return make_engine(settings.db_url)
+
+
+@pytest.fixture
+def workspace(settings):
+    return Workspace(settings.workspace_dir)
