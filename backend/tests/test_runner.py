@@ -90,25 +90,56 @@ async def test_on_progress_reports_weighted_overall_progress(make_ctx):
 
 async def test_cancel_while_waiting_for_gpu_lock(make_ctx):
     gpu_lock = asyncio.Lock()
-    await gpu_lock.acquire()  # Hold the lock to block the stage
+    await gpu_lock.acquire()  # Another job holds the GPU for the whole test
 
     ctx = make_ctx()
     gpu_stage = RecordingStage("gpu", uses_gpu=True)
-
-    task = asyncio.create_task(run(
-        [gpu_stage],
-        ctx,
-        gpu_lock=gpu_lock,
-        video_locks=VideoLocks(),
-    ))
-    await asyncio.sleep(0.1)  # Let it try to acquire
-    ctx.cancel_event.set()  # Cancel while waiting
-    gpu_lock.release()  # Release lock
+    task = asyncio.create_task(run([gpu_stage], ctx, gpu_lock=gpu_lock, video_locks=VideoLocks()))
+    await asyncio.sleep(0.1)  # Let it start waiting
+    ctx.cancel_event.set()
 
     with pytest.raises(StageCancelled):
-        await asyncio.wait_for(task, 2)
+        await asyncio.wait_for(task, 1.5)  # observed while the lock is still held
+    assert gpu_lock.locked()
+    gpu_lock.release()
     assert gpu_stage.runs == 0
     assert ("gpu", "cancelled") in statuses(ctx.bus, ctx.job_id)
+    waiting = [e.message for e in ctx.bus.history(ctx.job_id) if e.type == "progress" and e.stage == "gpu"]
+    assert waiting == ["Waiting for the GPU…"]
+
+
+async def test_cancel_while_waiting_for_video_lock(make_ctx):
+    locks = VideoLocks()
+    held = locks.get("samevideo")
+    await held.acquire()  # Another job is building artifacts for this video
+
+    ctx = make_ctx()
+    ctx.video_id = "samevideo"
+    stage = RecordingStage("cpu")
+    task = asyncio.create_task(run([stage], ctx, video_locks=locks))
+    await asyncio.sleep(0.1)
+    ctx.cancel_event.set()
+
+    with pytest.raises(StageCancelled):
+        await asyncio.wait_for(task, 1.5)
+    assert held.locked()
+    held.release()
+    assert stage.runs == 0
+    waiting = [e.message for e in ctx.bus.history(ctx.job_id) if e.type == "progress"]
+    assert waiting == ["Waiting for another job on this video…"]
+
+
+async def test_locks_are_released_after_waiting(make_ctx):
+    gpu_lock = asyncio.Lock()
+    await gpu_lock.acquire()
+    ctx = make_ctx()
+    gpu_stage = RecordingStage("gpu", uses_gpu=True)
+    task = asyncio.create_task(run([gpu_stage], ctx, gpu_lock=gpu_lock))
+    await asyncio.sleep(0.1)
+    gpu_lock.release()
+    await asyncio.wait_for(task, 2)
+    assert gpu_stage.runs == 1
+    assert not gpu_lock.locked()
 
 
 async def test_cached_after_first_job_on_same_video(make_ctx):

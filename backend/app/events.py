@@ -19,17 +19,50 @@ class JobEvent(BaseModel):
     ts: float = Field(default_factory=time.time)
 
 
+class _JobHistory:
+    """Chronological event log for one job, compacted so the important events are never lost.
+
+    `stage`, `job` and `log` events are few and always kept; only the latest `progress` event per
+    stage is kept (it supersedes the earlier ones); `partial` events are capped at `partial_limit`,
+    oldest first. Events live in one insertion-ordered dict, so replay stays chronological.
+    """
+
+    def __init__(self, partial_limit: int) -> None:
+        self._partial_limit = partial_limit
+        self._events: dict[int, JobEvent] = {}
+        self._seq = 0
+        self._progress_keys: dict[str | None, int] = {}
+        self._partial_keys: deque[int] = deque()
+
+    def append(self, event: JobEvent) -> None:
+        key = self._seq
+        self._seq += 1
+        if event.type == "progress":
+            previous = self._progress_keys.get(event.stage)
+            if previous is not None:
+                self._events.pop(previous, None)
+            self._progress_keys[event.stage] = key
+        elif event.type == "partial":
+            self._partial_keys.append(key)
+            while len(self._partial_keys) > self._partial_limit:
+                self._events.pop(self._partial_keys.popleft(), None)
+        self._events[key] = event
+
+    def __iter__(self):
+        return iter(list(self._events.values()))
+
+
 class EventBus:
     """In-memory pub/sub keyed by job id.
 
     Stages run in worker threads, so publish() hops onto the bound event loop.
-    Each job keeps a bounded history that is replayed to new subscribers, so a
-    browser that connects (or reconnects) mid-job sees the full picture.
+    Each job keeps a compacted history (see _JobHistory) that is replayed to new
+    subscribers, so a browser that connects (or reconnects) mid-job sees the full picture.
     """
 
     def __init__(self, history_limit: int = 1000) -> None:
-        self._history_limit = history_limit
-        self._history: dict[str, deque[JobEvent]] = {}
+        self._history_limit = history_limit  # max `partial` events kept per job
+        self._history: dict[str, _JobHistory] = {}
         self._subscribers: dict[str, set[asyncio.Queue[JobEvent]]] = defaultdict(set)
         self._loop: asyncio.AbstractEventLoop | None = None
 
@@ -54,7 +87,9 @@ class EventBus:
             pass
 
     def _deliver(self, event: JobEvent) -> None:
-        history = self._history.setdefault(event.job_id, deque(maxlen=self._history_limit))
+        history = self._history.get(event.job_id)
+        if history is None:
+            history = self._history[event.job_id] = _JobHistory(self._history_limit)
         history.append(event)
         for queue in list(self._subscribers.get(event.job_id, ())):
             queue.put_nowait(event)

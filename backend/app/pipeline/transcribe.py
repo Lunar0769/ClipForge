@@ -13,10 +13,18 @@ logger = logging.getLogger(__name__)
 
 SegmentCallback = Callable[[Segment, float], None]
 ModelFactory = Callable[[str, str, str, str], Any]
+RestartCallback = Callable[[], None]
+
+
+def _no_restart() -> None:
+    pass
 
 
 class Transcriber(Protocol):
-    def transcribe(self, audio: Path, on_segment: SegmentCallback, cancel: threading.Event) -> Transcript: ...
+    def transcribe(
+        self, audio: Path, on_segment: SegmentCallback, cancel: threading.Event,
+        on_restart: RestartCallback = _no_restart,
+    ) -> Transcript: ...
 
 
 def _default_cuda_available() -> bool:
@@ -34,9 +42,15 @@ def _default_model_factory(name: str, device: str, compute_type: str, download_r
     return WhisperModel(name, device=device, compute_type=compute_type, download_root=download_root)
 
 
-def _is_oom(exc: BaseException) -> bool:
+_FALLBACK_ERRORS = (
+    "out of memory", "cuda_error_out_of_memory",  # 4 GB GPUs
+    "cublas", "cudnn", "cuda driver",  # CUDA libraries that only fail once inference starts
+)
+
+
+def _should_fall_back(exc: BaseException) -> bool:
     text = str(exc).lower()
-    return "out of memory" in text or "cuda_error_out_of_memory" in text
+    return any(needle in text for needle in _FALLBACK_ERRORS)
 
 
 class FasterWhisperTranscriber:
@@ -61,6 +75,7 @@ class FasterWhisperTranscriber:
         self._attempts: list[tuple[str, str]] | None = None
         self._index = 0
         self._model: Any = None
+        self._last_error: Exception | None = None
         self._lock = threading.Lock()
         self.active: tuple[str, str] | None = None
 
@@ -74,7 +89,6 @@ class FasterWhisperTranscriber:
         return self._attempts
 
     def _load(self) -> Any:
-        last_error: Exception | None = None
         attempts = self.attempts()
         while self._index < len(attempts):
             device, compute_type = attempts[self._index]
@@ -85,25 +99,31 @@ class FasterWhisperTranscriber:
                 return self._model
             except (RuntimeError, ValueError, OSError) as exc:
                 logger.warning("Whisper load failed on %s/%s: %s", device, compute_type, exc)
-                last_error = exc
+                self._last_error = exc
                 self._index += 1
+        # Start over next time, so Retry (e.g. after fixing the GPU setup) tries every option again.
+        self._index, self._model, self.active = 0, None, None
         raise StageError(
             "Couldn't load the speech recognition model.",
-            f"Run `uv run python -m app.cli doctor` in backend/ to check your GPU setup. Last error: {last_error}",
+            f"Run `uv run python -m app.cli doctor` in backend/ to check your GPU setup. Last error: {self._last_error}",
         )
 
-    def transcribe(self, audio: Path, on_segment: SegmentCallback, cancel: threading.Event) -> Transcript:
+    def transcribe(
+        self, audio: Path, on_segment: SegmentCallback, cancel: threading.Event,
+        on_restart: RestartCallback = _no_restart,
+    ) -> Transcript:
         with self._lock:
             while True:
                 model = self._model or self._load()
                 try:
                     return self._run(model, audio, on_segment, cancel)
                 except RuntimeError as exc:
-                    if not _is_oom(exc) or self._index + 1 >= len(self.attempts()):
+                    if not _should_fall_back(exc) or self._index + 1 >= len(self.attempts()):
                         raise
-                    logger.warning("Out of GPU memory on %s; falling back", self.active)
+                    logger.warning("Inference failed on %s (%s); falling back", self.active, exc)
                     self._model = None
                     self._index += 1
+                    on_restart()  # segments already streamed will be streamed again
 
     def _run(self, model: Any, audio: Path, on_segment: SegmentCallback, cancel: threading.Event) -> Transcript:
         if cancel.is_set():
@@ -149,7 +169,10 @@ class TranscribeStage:
                 "kind": "segment", "start": segment.start, "end": segment.end, "text": segment.text,
             })
 
-        transcript = self._transcriber.transcribe(vp.audio, on_segment, ctx.cancel_event)
+        def on_restart() -> None:
+            ctx.emit("partial", stage=self.name, data={"kind": "restart"})
+
+        transcript = self._transcriber.transcribe(vp.audio, on_segment, ctx.cancel_event, on_restart)
         ctx.emit("partial", stage=self.name, data={"kind": "language", "language": transcript.language})
         if not transcript.words:
             ctx.emit("log", stage=self.name, message="No speech was detected in this video.")

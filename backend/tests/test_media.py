@@ -1,8 +1,14 @@
 import shutil
+import sys
+import threading
+import time
+from types import SimpleNamespace
 
 import pytest
 
+from app import media
 from app.media import MediaError, compute_video_id, extract_audio, probe
+from app.pipeline.errors import StageCancelled
 
 
 def test_probe_video_with_audio(sample_video):
@@ -43,3 +49,62 @@ def test_video_id_is_content_based(sample_video, silent_video, tmp_path):
     assert len(vid) == 20
     assert compute_video_id(copy, duration) == vid
     assert compute_video_id(silent_video, probe(silent_video).duration_s) != vid
+
+
+@pytest.mark.parametrize("stdout", [
+    "this is not json",
+    '{"format": {"duration": "N/A"}, "streams": [{"codec_type": "audio"}]}',
+])
+def test_probe_wraps_unparseable_output_in_media_error(monkeypatch, tmp_path, stdout):
+    monkeypatch.setattr(media, "_run", lambda args: SimpleNamespace(stdout=stdout, stderr="", returncode=0))
+    with pytest.raises(MediaError):
+        probe(tmp_path / "x.mp4")
+
+
+def _fake_ffmpeg(script: str):
+    """Replace the ffmpeg command line with a Python child that writes the .tmp output itself."""
+    return lambda src, tmp, sample_rate: [sys.executable, "-c", script, str(tmp)]
+
+
+def test_cancelled_extraction_raises_and_leaves_no_tmp(monkeypatch, tmp_path):
+    started = tmp_path / "started"
+    script = (
+        "import sys, time, pathlib; pathlib.Path(sys.argv[1]).write_bytes(b'partial'); "
+        f"pathlib.Path({str(started)!r}).touch(); time.sleep(30)"
+    )
+    monkeypatch.setattr(media, "_audio_command", _fake_ffmpeg(script))
+    cancel = threading.Event()
+
+    def cancel_once_started():
+        deadline = time.monotonic() + 10
+        while not started.exists() and time.monotonic() < deadline:
+            time.sleep(0.05)
+        cancel.set()
+
+    threading.Thread(target=cancel_once_started, daemon=True).start()
+    dst = tmp_path / "audio.wav"
+    t0 = time.monotonic()
+    with pytest.raises(StageCancelled):
+        extract_audio(tmp_path / "in.mp4", dst, cancel=cancel)
+    assert time.monotonic() - t0 < 10
+    assert started.exists()
+    assert not dst.exists()
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_failed_extraction_raises_media_error_and_leaves_no_tmp(monkeypatch, tmp_path):
+    script = "import sys, pathlib; pathlib.Path(sys.argv[1]).write_bytes(b'partial'); sys.stderr.write('boom'); sys.exit(1)"
+    monkeypatch.setattr(media, "_audio_command", _fake_ffmpeg(script))
+    dst = tmp_path / "audio.wav"
+    with pytest.raises(MediaError, match="boom"):
+        extract_audio(tmp_path / "in.mp4", dst)
+    assert not dst.exists()
+    assert not list(tmp_path.glob("*.tmp"))
+
+
+def test_failed_real_ffmpeg_leaves_no_tmp(tmp_path):
+    bogus = tmp_path / "bogus.mp4"
+    bogus.write_text("not a video")
+    with pytest.raises(MediaError):
+        extract_audio(bogus, tmp_path / "audio.wav", cancel=threading.Event())
+    assert not list(tmp_path.glob("*.tmp"))

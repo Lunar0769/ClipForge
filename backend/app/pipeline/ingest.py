@@ -67,7 +67,7 @@ class IngestStage:
             if not vp.audio.exists():
                 ctx.progress(self.name, 0.9, "Extracting audio…")
                 try:
-                    extract_audio(vp.find_source(), vp.audio)
+                    extract_audio(vp.find_source(), vp.audio, cancel=ctx.cancel_event)
                 except MediaError as exc:
                     raise StageError("Couldn't extract the audio track.", "Try re-exporting the video as MP4.") from exc
 

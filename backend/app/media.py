@@ -3,10 +3,14 @@ import json
 import os
 import shutil
 import subprocess
+import threading
 from dataclasses import dataclass
 from pathlib import Path
 
+from app.pipeline.errors import StageCancelled
+
 HEAD_BYTES = 64 * 1024 * 1024
+_POLL_S = 0.2
 
 
 class MediaError(Exception):
@@ -30,12 +34,40 @@ def _tool(name: str) -> str:
     return path
 
 
+def _failure(args: list[str], stderr: str) -> MediaError:
+    tail = "\n".join(stderr.strip().splitlines()[-5:])
+    return MediaError(f"{Path(args[0]).stem} failed: {tail}")
+
+
 def _run(args: list[str]) -> subprocess.CompletedProcess[str]:
     proc = subprocess.run(args, capture_output=True, text=True, encoding="utf-8", errors="replace")
     if proc.returncode != 0:
-        tail = "\n".join(proc.stderr.strip().splitlines()[-5:])
-        raise MediaError(f"{Path(args[0]).stem} failed: {tail}")
+        raise _failure(args, proc.stderr)
     return proc
+
+
+def _run_cancellable(args: list[str], cancel: threading.Event | None) -> None:
+    """Run a tool, polling `cancel`; a cancelled run is terminated (then killed) and raises StageCancelled."""
+    proc = subprocess.Popen(
+        args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
+        text=True, encoding="utf-8", errors="replace",
+    )
+    while True:
+        if cancel is not None and cancel.is_set():
+            proc.terminate()
+            try:
+                proc.communicate(timeout=3)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.communicate()
+            raise StageCancelled()
+        try:
+            _, stderr = proc.communicate(timeout=_POLL_S)
+            break
+        except subprocess.TimeoutExpired:  # retrying communicate() loses no output
+            continue
+    if proc.returncode != 0:
+        raise _failure(args, stderr or "")
 
 
 def _parse_fps(rate: str | None) -> float | None:
@@ -54,7 +86,12 @@ def probe(path: Path) -> MediaInfo:
         _tool("ffprobe"), "-v", "error", "-print_format", "json",
         "-show_streams", "-show_format", str(path),
     ])
-    data = json.loads(proc.stdout or "{}")
+    try:
+        data = json.loads(proc.stdout or "{}")
+        if not isinstance(data, dict):
+            raise ValueError("ffprobe did not return a JSON object")
+    except ValueError as exc:  # JSONDecodeError is a ValueError
+        raise MediaError(f"ffprobe returned unreadable output: {exc}") from exc
     streams = data.get("streams", [])
     video = next(
         (s for s in streams
@@ -62,7 +99,11 @@ def probe(path: Path) -> MediaInfo:
         None,
     )
     audio = next((s for s in streams if s.get("codec_type") == "audio"), None)
-    duration = float(data.get("format", {}).get("duration") or (video or {}).get("duration") or 0.0)
+    raw_duration = data.get("format", {}).get("duration") or (video or {}).get("duration") or 0.0
+    try:
+        duration = float(raw_duration)
+    except (TypeError, ValueError) as exc:
+        raise MediaError(f"ffprobe reported an invalid duration: {raw_duration!r}") from exc
     if video is None and audio is None:
         raise MediaError("No audio or video streams found")
     return MediaInfo(
@@ -75,13 +116,22 @@ def probe(path: Path) -> MediaInfo:
     )
 
 
-def extract_audio(src: Path, dst: Path, sample_rate: int = 16000) -> None:
-    tmp = dst.with_name(dst.name + ".tmp")
-    _run([
+def _audio_command(src: Path, tmp: Path, sample_rate: int) -> list[str]:
+    return [
         _tool("ffmpeg"), "-y", "-v", "error", "-i", str(src),
         "-vn", "-ac", "1", "-ar", str(sample_rate), "-c:a", "pcm_s16le", "-f", "wav", str(tmp),
-    ])
-    os.replace(tmp, dst)
+    ]
+
+
+def extract_audio(
+    src: Path, dst: Path, sample_rate: int = 16000, *, cancel: threading.Event | None = None
+) -> None:
+    tmp = dst.with_name(dst.name + ".tmp")
+    try:
+        _run_cancellable(_audio_command(src, tmp, sample_rate), cancel)
+        os.replace(tmp, dst)
+    finally:
+        tmp.unlink(missing_ok=True)  # no-op after a successful replace
 
 
 def compute_video_id(path: Path, duration_s: float) -> str:

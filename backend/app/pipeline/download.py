@@ -1,4 +1,5 @@
 import threading
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -44,6 +45,7 @@ def build_ytdlp_options(
         "merge_output_format": "mp4",
         "outtmpl": str(dest_dir / "download.%(ext)s"),
         "noplaylist": True,
+        "playlist_items": "1",  # guard: never fetch more than one entry, even if a list slips through
         "quiet": True,
         "no_warnings": True,
         "noprogress": True,
@@ -62,6 +64,10 @@ def build_ytdlp_options(
 _UPDATE_HINT = "Update yt-dlp: in backend/ run `uv lock --upgrade-package yt-dlp` then `uv sync`, and press Retry."
 
 _ERROR_RULES: list[tuple[tuple[str, ...], str, str]] = [
+    # Before the "is not available" rule: this one means YouTube withheld the streams, not that the video is gone.
+    (("requested format is not available",),
+     "YouTube blocked the download.",
+     _UPDATE_HINT),
     (("sign in to confirm", "confirm your age", "age-restricted", "members-only", "join this channel"),
      "This video needs a signed-in YouTube session.",
      "Export your browser's YouTube cookies to a cookies.txt file and set CLIPFORGE_YTDLP_COOKIES_FILE in .env."),
@@ -88,6 +94,31 @@ def explain_download_error(raw: str) -> tuple[str, str]:
     return "The download failed.", f"Check your internet connection and the link. {_UPDATE_HINT}"
 
 
+class ProgressThrottle:
+    """Forwards download progress at most every 1% or 250 ms (yt-dlp calls its hook on every block)."""
+
+    def __init__(self, on_progress: ProgressFn, *, clock: Callable[[], float] = time.monotonic) -> None:
+        self._on_progress = on_progress
+        self._clock = clock
+        self._last_fraction: float | None = None
+        self._last_time = 0.0
+
+    def __call__(self, fraction: float, message: str | None) -> None:
+        now = self._clock()
+        if (
+            self._last_fraction is None
+            or fraction >= 1.0
+            or abs(fraction - self._last_fraction) >= 0.01
+            or now - self._last_time >= 0.25
+        ):
+            self._last_fraction, self._last_time = fraction, now
+            self._on_progress(fraction, message)
+
+
+def _is_playlist(info: dict[str, Any]) -> bool:
+    return info.get("_type") == "playlist" or "entries" in info
+
+
 class YtDlpDownloader:
     def __init__(self, *, max_height: int, cookies_file: Path | None, js_runtime: str | None) -> None:
         self._max_height = max_height
@@ -100,6 +131,7 @@ class YtDlpDownloader:
         import yt_dlp
 
         dest_dir.mkdir(parents=True, exist_ok=True)
+        report = ProgressThrottle(on_progress)
 
         def hook(d: dict[str, Any]) -> None:
             if cancel.is_set():
@@ -108,7 +140,7 @@ class YtDlpDownloader:
                 total = d.get("total_bytes") or d.get("total_bytes_estimate")
                 if total:
                     pct = (d.get("_percent_str") or "").strip()
-                    on_progress(d.get("downloaded_bytes", 0) / total, f"Downloading… {pct}".strip())
+                    report(min(d.get("downloaded_bytes", 0) / total, 1.0), f"Downloading… {pct}".strip())
 
         opts = build_ytdlp_options(
             dest_dir, max_height=self._max_height,
@@ -117,7 +149,12 @@ class YtDlpDownloader:
         opts["progress_hooks"] = [hook]
         try:
             with yt_dlp.YoutubeDL(opts) as ydl:
-                info = ydl.extract_info(url, download=True)
+                # Resolve the link first: noplaylist only covers video+list URLs, so a playlist or
+                # channel link would otherwise download every entry.
+                info = ydl.extract_info(url, download=False, process=False)
+                if _is_playlist(info):
+                    raise StageError("This link is a playlist or channel.", "Paste a link to a single video.")
+                info = ydl.process_ie_result(info, download=True)
         except yt_dlp.utils.DownloadCancelled as exc:
             raise StageCancelled() from exc
         except yt_dlp.utils.DownloadError as exc:

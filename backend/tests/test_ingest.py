@@ -112,3 +112,20 @@ def test_ingest_resumes_when_audio_extraction_was_interrupted(make_ctx, workspac
     assert not stage.is_done(ctx)
     stage.run(ctx)  # must not need the (already moved) upload again
     assert ctx.video().audio.exists()
+
+
+def test_audio_extraction_receives_the_job_cancel_event(make_ctx, workspace, sample_video, monkeypatch):
+    from app.pipeline import ingest
+    from app.pipeline.errors import StageCancelled
+
+    seen = []
+
+    def cancelled_extract(src, dst, *, cancel=None):
+        seen.append(cancel)
+        raise StageCancelled()
+
+    monkeypatch.setattr(ingest, "extract_audio", cancelled_extract)
+    ctx = make_upload(make_ctx, workspace, sample_video)
+    with pytest.raises(StageCancelled):
+        IngestStage(downloader=FakeDownloader(sample_video)).run(ctx)
+    assert seen == [ctx.cancel_event]
