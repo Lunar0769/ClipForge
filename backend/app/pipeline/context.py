@@ -32,6 +32,10 @@ class PipelineContext:
     def progress(self, stage: str, fraction: float, message: str | None = None) -> None:
         self.emit("progress", stage=stage, progress=max(0.0, min(1.0, fraction)), message=message)
 
+    @property
+    def cancel(self) -> threading.Event:
+        return self.cancel_event
+
     def check_cancelled(self) -> None:
         if self.cancel_event.is_set():
             raise StageCancelled()

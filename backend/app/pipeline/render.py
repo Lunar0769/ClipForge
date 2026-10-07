@@ -142,8 +142,7 @@ class RenderStage:
         ctx.emit("log", stage=self.name, message=f"Starting 9:16 vertical render for {total} clips...")
 
         for idx, clip in enumerate(clips):
-            if ctx.cancel.is_set():
-                raise StageCancelled()
+            ctx.check_cancelled()
 
             video_dst = clips_dir / f"{clip.id}.mp4"
             thumb_dst = clips_dir / f"{clip.id}.jpg"
@@ -153,14 +152,14 @@ class RenderStage:
                 ctx.emit(
                     "log",
                     stage=self.name,
-                    message=f"Rendering clip #{clip.rank + 1} ({Math_round_s(clip.end_s - clip.start_s)}s): {clip.title}",
+                    message=f"Rendering clip #{clip.rank + 1} ({int(round(clip.end_s - clip.start_s))}s): {clip.title}",
                 )
                 render_clip_video(
                     src=src,
                     dst=video_dst,
                     start_s=clip.start_s,
                     end_s=clip.end_s,
-                    cancel=ctx.cancel,
+                    cancel=ctx.cancel_event,
                 )
 
             # 2. Thumbnail extraction (pick a frame 1.5s in or at midpoint)
@@ -171,7 +170,7 @@ class RenderStage:
                         src=src,
                         dst=thumb_dst,
                         time_s=mid,
-                        cancel=ctx.cancel,
+                        cancel=ctx.cancel_event,
                     )
                 except Exception as exc:
                     logger.warning("Thumbnail extraction failed for clip %s: %s", clip.id, exc)
@@ -188,7 +187,3 @@ class RenderStage:
             ctx.emit("progress", stage=self.name, progress=progress)
 
         ctx.emit("log", stage=self.name, message=f"✅ Finished rendering all {total} clips in 9:16 vertical format.")
-
-
-def Math_round_s(val: float) -> int:
-    return int(round(val))
