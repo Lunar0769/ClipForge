@@ -98,6 +98,7 @@ export interface Clip {
   speakers: string[];
   video_file: string | null;
   thumbnail_file: string | null;
+  subtitle_style?: string | null;
   seo: SeoPack | null;
   created_at: string;
   updated_at: string;

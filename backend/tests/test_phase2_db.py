@@ -163,7 +163,7 @@ def test_render_clip_video_command_args(tmp_path, monkeypatch):
 
     seen_cmds = []
 
-    def mock_run(cmd, cancel=None):
+    def mock_run(cmd, cancel=None, cwd=None):
         seen_cmds.append(cmd)
         # Simulate creating the tmp file
         for arg in cmd:

@@ -83,11 +83,16 @@ class ClipOut(BaseModel):
     speakers: list[str]
     video_file: str | None
     thumbnail_file: str | None = None
+    subtitle_style: str | None = "hormozi"
     seo: SeoPack | None = None
     created_at: datetime
     updated_at: datetime
 
     utc_dates = field_validator("created_at", "updated_at")(_as_utc)
+
+
+class ClipRenderRequest(BaseModel):
+    subtitle_style: str = "hormozi"
 
 
 def clip_out(clip: Clip, seo_data: dict[str, Any] | None = None) -> ClipOut:

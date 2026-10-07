@@ -15,6 +15,7 @@ import {
   Download,
   Film,
   X,
+  RefreshCw,
 } from "lucide-react";
 import clsx from "clsx";
 import type { Clip, SeoPack, SubScores } from "../../lib/types";
@@ -221,22 +222,47 @@ function ClipCard({ clip, index, isSelected, onSelect }: ClipCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
+  const [currentStyle, setCurrentStyle] = useState(clip.subtitle_style || "hormozi");
+  const [isRerendering, setIsRerendering] = useState(false);
+  const [videoKey, setVideoKey] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
 
   const hasVideo = !!clip.video_file;
-  const videoUrl = api.clipVideoUrl(clip.id);
-  const thumbUrl = api.clipThumbnailUrl(clip.id);
+  const videoUrl = useMemo(
+    () => `${api.clipVideoUrl(clip.id)}${videoKey ? `?v=${videoKey}` : ""}`,
+    [clip.id, videoKey]
+  );
+  const thumbUrl = useMemo(
+    () => `${api.clipThumbnailUrl(clip.id)}${videoKey ? `?v=${videoKey}` : ""}`,
+    [clip.id, videoKey]
+  );
   const downloadUrl = api.clipDownloadUrl(clip.id);
 
   const togglePlay = (e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!videoRef.current) return;
+    if (!videoRef.current || isRerendering) return;
     if (isPlaying) {
       videoRef.current.pause();
       setIsPlaying(false);
     } else {
       void videoRef.current.play();
       setIsPlaying(true);
+    }
+  };
+
+  const handleStyleSelect = async (styleKey: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isRerendering || styleKey === currentStyle) return;
+    setCurrentStyle(styleKey);
+    setIsRerendering(true);
+    try {
+      await api.rerenderClip(clip.id, styleKey);
+      setVideoKey((k) => k + 1);
+      setIsPlaying(false);
+    } catch (err) {
+      console.error("Failed to re-render clip subtitles:", err);
+    } finally {
+      setIsRerendering(false);
     }
   };
 
@@ -272,9 +298,10 @@ function ClipCard({ clip, index, isSelected, onSelect }: ClipCardProps) {
 
           {/* 9:16 Vertical Video Preview Box */}
           {hasVideo ? (
-            <div className="relative mb-3 aspect-[9/16] max-h-72 w-full overflow-hidden rounded-xl bg-black/90 border border-border/80 flex items-center justify-center">
+            <div className="relative mb-2.5 aspect-[9/16] max-h-72 w-full overflow-hidden rounded-xl bg-black/90 border border-border/80 flex items-center justify-center">
               <video
                 ref={videoRef}
+                key={videoUrl}
                 src={videoUrl}
                 poster={thumbUrl}
                 preload="metadata"
@@ -285,40 +312,95 @@ function ClipCard({ clip, index, isSelected, onSelect }: ClipCardProps) {
                 className="h-full w-full object-contain"
               />
 
-              {/* Play/Pause Overlay */}
-              <button
-                type="button"
-                onClick={togglePlay}
-                className={clsx(
-                  "absolute inset-0 flex items-center justify-center transition-all bg-black/30 group/btn",
-                  isPlaying ? "opacity-0 hover:opacity-100 bg-black/40" : "opacity-100"
-                )}
-                aria-label={isPlaying ? "Pause video" : "Play video"}
-              >
-                <div className="flex size-11 items-center justify-center rounded-full bg-violet-brand/90 text-white shadow-lg shadow-violet-brand/40 transition-transform group-hover/btn:scale-110">
-                  {isPlaying ? <Pause className="size-5" /> : <Play className="size-5 fill-current ml-0.5" />}
+              {/* Re-rendering Subtitles Loading Overlay */}
+              {isRerendering && (
+                <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm gap-2">
+                  <RefreshCw className="size-6 animate-spin text-violet-brand" />
+                  <span className="text-[11px] font-semibold text-white">Burning {currentStyle} captions...</span>
                 </div>
-              </button>
+              )}
+
+              {/* Play/Pause Overlay */}
+              {!isRerendering && (
+                <button
+                  type="button"
+                  onClick={togglePlay}
+                  className={clsx(
+                    "absolute inset-0 flex items-center justify-center transition-all bg-black/30 group/btn",
+                    isPlaying ? "opacity-0 hover:opacity-100 bg-black/40" : "opacity-100"
+                  )}
+                  aria-label={isPlaying ? "Pause video" : "Play video"}
+                >
+                  <div className="flex size-11 items-center justify-center rounded-full bg-violet-brand/90 text-white shadow-lg shadow-violet-brand/40 transition-transform group-hover/btn:scale-110">
+                    {isPlaying ? <Pause className="size-5" /> : <Play className="size-5 fill-current ml-0.5" />}
+                  </div>
+                </button>
+              )}
 
               {/* Fullscreen Modal trigger button */}
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setShowVideoModal(true);
-                }}
-                className="absolute right-2 top-2 rounded-lg bg-black/60 p-1.5 text-white/80 backdrop-blur-sm transition hover:bg-black/80 hover:text-white"
-                title="Watch 9:16 Fullscreen"
-              >
-                <Film className="size-3.5" />
-              </button>
+              {!isRerendering && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowVideoModal(true);
+                  }}
+                  className="absolute right-2 top-2 rounded-lg bg-black/60 p-1.5 text-white/80 backdrop-blur-sm transition hover:bg-black/80 hover:text-white"
+                  title="Watch 9:16 Fullscreen"
+                >
+                  <Film className="size-3.5" />
+                </button>
+              )}
             </div>
           ) : (
-            <div className="mb-3 flex items-center gap-2 rounded-xl border border-dashed border-border bg-surface-2/40 px-3 py-2 text-xs text-muted">
+            <div className="mb-2.5 flex items-center gap-2 rounded-xl border border-dashed border-border bg-surface-2/40 px-3 py-2 text-xs text-muted">
               <Film className="size-3.5 text-violet-brand" />
               <span>9:16 video ready to render</span>
             </div>
           )}
+
+          {/* Caption Style Pill Bar */}
+          <div
+            className="mb-3 rounded-xl border border-border/80 bg-surface-2/40 p-2"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-1 mb-1.5 px-0.5">
+              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted flex items-center gap-1">
+                <Sparkles className="size-2.5 text-violet-brand" />
+                Dynamic Captions
+              </span>
+              {isRerendering && (
+                <span className="inline-flex items-center gap-1 text-[10px] text-violet-400 font-medium">
+                  <RefreshCw className="size-2.5 animate-spin" />
+                  Rendering...
+                </span>
+              )}
+            </div>
+            <div className="grid grid-cols-4 gap-1">
+              {[
+                { id: "hormozi", label: "⚡ Hormozi" },
+                { id: "mrbeast", label: "🟢 MrBeast" },
+                { id: "neon", label: "🟣 Cyber" },
+                { id: "clean", label: "⚪ Clean" },
+              ].map((preset) => (
+                <button
+                  key={preset.id}
+                  type="button"
+                  disabled={isRerendering}
+                  onClick={(e) => handleStyleSelect(preset.id, e)}
+                  className={clsx(
+                    "rounded-lg px-1.5 py-1 text-[10px] font-medium transition text-center truncate",
+                    currentStyle === preset.id
+                      ? "bg-violet-brand text-white shadow-sm font-semibold"
+                      : "bg-surface text-muted hover:text-fg hover:bg-surface-3"
+                  )}
+                  title={`Switch to ${preset.label} animated captions`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+          </div>
 
           {/* Title */}
           <h3 className="font-display text-base font-semibold leading-snug tracking-tight text-fg group-hover:text-violet-300 transition-colors">

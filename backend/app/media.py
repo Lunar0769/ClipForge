@@ -46,11 +46,21 @@ def _run(args: list[str]) -> subprocess.CompletedProcess[str]:
     return proc
 
 
-def _run_cancellable(args: list[str], cancel: threading.Event | None) -> None:
+def _run_cancellable(
+    args: list[str],
+    cancel: threading.Event | None,
+    cwd: Path | str | None = None,
+) -> None:
     """Run a tool, polling `cancel`; a cancelled run is terminated (then killed) and raises StageCancelled."""
     proc = subprocess.Popen(
-        args, stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE,
-        text=True, encoding="utf-8", errors="replace",
+        args,
+        cwd=str(cwd) if cwd else None,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     while True:
         if cancel is not None and cancel.is_set():

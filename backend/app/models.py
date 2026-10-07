@@ -80,5 +80,6 @@ class Clip(SQLModel, table=True):
     # output video and thumbnail files (relative to workspace/videos/{video_id}/), set after rendering
     video_file: str | None = None
     thumbnail_file: str | None = None
+    subtitle_style: str | None = Field(default="hormozi", nullable=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

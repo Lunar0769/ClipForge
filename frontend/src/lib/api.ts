@@ -61,6 +61,11 @@ export const api = {
   clipVideoUrl: (clipId: string) => `${BASE}/clips/${clipId}/video`,
   clipThumbnailUrl: (clipId: string) => `${BASE}/clips/${clipId}/thumbnail`,
   clipDownloadUrl: (clipId: string) => `${BASE}/clips/${clipId}/download`,
+  rerenderClip: (clipId: string, subtitleStyle: string = "hormozi") =>
+    request<Clip>(`/clips/${clipId}/render`, {
+      method: "POST",
+      body: JSON.stringify({ subtitle_style: subtitleStyle }),
+    }),
 };
 
 export function jobEventsUrl(jobId: string): string {
