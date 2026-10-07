@@ -82,6 +82,7 @@ class ClipOut(BaseModel):
     emoji: list[str]
     speakers: list[str]
     video_file: str | None
+    thumbnail_file: str | None = None
     seo: SeoPack | None = None
     created_at: datetime
     updated_at: datetime

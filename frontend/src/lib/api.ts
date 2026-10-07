@@ -58,6 +58,9 @@ export const api = {
   system: () => request<SystemInfo>("/system"),
   listClips: (projectId: string) => request<Clip[]>(`/projects/${projectId}/clips`),
   getClip: (clipId: string) => request<Clip>(`/clips/${clipId}`),
+  clipVideoUrl: (clipId: string) => `${BASE}/clips/${clipId}/video`,
+  clipThumbnailUrl: (clipId: string) => `${BASE}/clips/${clipId}/thumbnail`,
+  clipDownloadUrl: (clipId: string) => `${BASE}/clips/${clipId}/download`,
 };
 
 export function jobEventsUrl(jobId: string): string {

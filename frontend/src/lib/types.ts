@@ -97,6 +97,7 @@ export interface Clip {
   emoji: string[];
   speakers: string[];
   video_file: string | null;
+  thumbnail_file: string | null;
   seo: SeoPack | null;
   created_at: string;
   updated_at: string;

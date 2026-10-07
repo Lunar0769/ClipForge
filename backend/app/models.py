@@ -77,7 +77,8 @@ class Clip(SQLModel, table=True):
     keywords: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     emoji: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
     speakers: list[str] = Field(default_factory=list, sa_column=Column(JSON, nullable=False))
-    # output video file (relative to workspace/videos/), set after rendering
+    # output video and thumbnail files (relative to workspace/videos/{video_id}/), set after rendering
     video_file: str | None = None
+    thumbnail_file: str | None = None
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

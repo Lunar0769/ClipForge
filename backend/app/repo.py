@@ -156,3 +156,17 @@ def list_clips(engine: Engine, project_id: str) -> list[Clip]:
 def get_clip(engine: Engine, clip_id: str) -> Clip | None:
     with _session(engine) as s:
         return s.get(Clip, clip_id)
+
+
+def update_clip(engine: Engine, clip_id: str, **fields) -> Clip:
+    with _session(engine) as s:
+        clip = s.get(Clip, clip_id)
+        if clip is None:
+            raise KeyError(clip_id)
+        for key, value in fields.items():
+            setattr(clip, key, value)
+        clip.updated_at = utcnow()
+        s.add(clip)
+        s.commit()
+        return clip
+

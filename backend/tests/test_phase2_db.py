@@ -104,3 +104,49 @@ def test_pick_scorer_prioritizes_gemini_when_set(monkeypatch):
     assert res is not None
     assert "score" in res
     assert "title" in res
+
+
+def test_update_clip_video_files(engine):
+    p = repo.create_project(engine, source_type=SourceType.upload)
+    [clip] = repo.replace_clips(engine, p.id, [make_clip(p.id, 1, 0.0)])
+    assert clip.video_file is None
+    assert clip.thumbnail_file is None
+
+    updated = repo.update_clip(
+        engine, clip.id, video_file=f"clips/{clip.id}.mp4", thumbnail_file=f"clips/{clip.id}.jpg"
+    )
+    assert updated.video_file == f"clips/{clip.id}.mp4"
+    assert updated.thumbnail_file == f"clips/{clip.id}.jpg"
+    refetched = repo.get_clip(engine, clip.id)
+    assert refetched.video_file == f"clips/{clip.id}.mp4"
+
+
+def test_render_stage_is_done_contract(engine, tmp_path):
+    from unittest.mock import MagicMock
+    from app.pipeline.render import RenderStage
+    from app.workspace import Workspace
+
+    stage = RenderStage()
+    ws = Workspace(tmp_path / "ws")
+    p = repo.create_project(engine, source_type=SourceType.upload)
+    ctx = MagicMock()
+    ctx.engine = engine
+    ctx.project_id = p.id
+    ctx.workspace = ws
+
+    # No clips yet -> not done
+    assert not stage.is_done(ctx)
+
+    # Clips exist but not rendered -> not done
+    [clip] = repo.replace_clips(engine, p.id, [make_clip(p.id, 1, 0.0)])
+    assert not stage.is_done(ctx)
+
+    # File created on disk and recorded in DB -> is_done returns True
+    clips_dir = ws.project_dir(p.id) / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+    video_file = clips_dir / f"{clip.id}.mp4"
+    video_file.write_bytes(b"dummy mp4")
+
+    repo.update_clip(engine, clip.id, video_file=f"clips/{clip.id}.mp4")
+    assert stage.is_done(ctx)
+
