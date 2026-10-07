@@ -1,10 +1,11 @@
 from datetime import datetime, timezone
+from typing import Any
 
 from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy import Engine
 
 from app import repo
-from app.models import JobStatus, Project, SourceType
+from app.models import Clip, JobStatus, Project, SourceType
 
 
 def _as_utc(value: datetime) -> datetime:
@@ -52,6 +53,47 @@ class StageInfo(BaseModel):
     name: str
     label: str
     weight: float
+
+
+class SeoPack(BaseModel):
+    youtube_caption: str = ""
+    tiktok_caption: str = ""
+    reels_caption: str = ""
+    hashtags: list[str] = []
+    cta: str = ""
+
+
+class ClipOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    project_id: str
+    rank: int
+    start_s: float
+    end_s: float
+    title: str
+    hook_text: str
+    hook_type: str
+    why_viral: str
+    payoff_summary: str
+    score: int
+    sub_scores: dict[str, int]
+    keywords: list[str]
+    emoji: list[str]
+    speakers: list[str]
+    video_file: str | None
+    seo: SeoPack | None = None
+    created_at: datetime
+    updated_at: datetime
+
+    utc_dates = field_validator("created_at", "updated_at")(_as_utc)
+
+
+def clip_out(clip: Clip, seo_data: dict[str, Any] | None = None) -> ClipOut:
+    out = ClipOut.model_validate(clip)
+    if seo_data:
+        out.seo = SeoPack(**{k: seo_data.get(k, v) for k, v in SeoPack().model_dump().items()})
+    return out
 
 
 def project_out(engine: Engine, project: Project) -> ProjectOut:

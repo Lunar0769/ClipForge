@@ -27,4 +27,8 @@ try {
     uv run python -m app.cli doctor
 } finally { Pop-Location }
 
-Write-Host "`nDone. Start ClipForge with: ./scripts/dev.ps1" -ForegroundColor Green
+Write-Host ""
+Write-Host "Done! Next steps:" -ForegroundColor Green
+Write-Host "  1. Open .env and add an LLM key (ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY)" -ForegroundColor Yellow
+Write-Host "  2. Run: ./scripts/dev.ps1" -ForegroundColor Yellow
+Write-Host "  3. Open http://localhost:5173, paste a YouTube URL and hit Forge" -ForegroundColor Yellow

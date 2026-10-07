@@ -1,4 +1,4 @@
-import type { Job, Project, StageInfo, SystemInfo, Transcript } from "./types";
+import type { Clip, Job, Project, StageInfo, SystemInfo, Transcript } from "./types";
 
 const BASE = "/api";
 
@@ -56,6 +56,8 @@ export const api = {
   stages: () => request<StageInfo[]>("/pipeline/stages"),
   transcript: (projectId: string) => request<Transcript>(`/projects/${projectId}/transcript`),
   system: () => request<SystemInfo>("/system"),
+  listClips: (projectId: string) => request<Clip[]>(`/projects/${projectId}/clips`),
+  getClip: (clipId: string) => request<Clip>(`/clips/${clipId}`),
 };
 
 export function jobEventsUrl(jobId: string): string {
