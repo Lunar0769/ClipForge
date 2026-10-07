@@ -111,10 +111,10 @@ Missing optional keys simply disable that feature — jobs never fail because of
 
 - [x] **Phase 1 — Foundation:** setup script, API + job queue, download & transcription, UI shell
 - [x] **Phase 2 — Clip engine:** LLM moment scoring (0–100 virality), candidate extraction, ranked clips gallery
-- [x] **Phase 3 — 9:16 Render Engine & SEO:** FFmpeg smart blurred background vertical cutting, thumbnails, inline player, platform copy (YT Shorts / TikTok / Reels)
-- [ ] **Phase 4 — Editor:** timeline trim, transcript editing, style & layout panels
-- [ ] **Phase 5 — Polish:** animated captions, word-level highlights, B-roll, music ducking
-- [ ] **Phase 6 — Global:** translation, dubbing, performance tuning
+- [x] **Phase 3 — 9:16 Render Engine & SEO:** FFmpeg smart blurred background vertical cutting, thumbnails, inline & cinema player, platform copy (YT Shorts / TikTok / Reels)
+- [x] **Phase 4 — Animated Captions & Subtitle Engine:** ASS word-by-word active karaoke pop, 4 viral presets (Hormozi, MrBeast, Cyber Neon, Minimal Clean), opening hook title badges, on-demand dashboard style switching
+- [x] **Phase 5 — Batch Export & Studio Polish:** 1-click ZIP export (MP4s + subtitles + thumbnails + formatted seo.txt), synchronized studio box workbench, transcript search & copy
+- [ ] **Phase 6 — Global & Polish:** auto-zoom punch-ins, B-roll cutaways, translation, dubbing
 
 ## 🧰 Tech stack
 
