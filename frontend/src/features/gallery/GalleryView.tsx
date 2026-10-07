@@ -626,38 +626,50 @@ export default function GalleryView({
           <h2 className="mt-0.5 font-display text-xl font-semibold">Ranked Clip Candidates</h2>
         </div>
 
-        {/* Filter Pills */}
-        <div className="flex items-center gap-1.5 rounded-full border border-border bg-surface p-1 text-xs">
-          <button
-            type="button"
-            onClick={() => setFilter("all")}
-            className={clsx(
-              "rounded-full px-3 py-1 font-medium transition",
-              filter === "all" ? "bg-violet-brand text-white shadow-sm" : "text-muted hover:text-fg"
-            )}
+        {/* Filter Pills & Export ZIP */}
+        <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5 rounded-full border border-border bg-surface p-1 text-xs">
+            <button
+              type="button"
+              onClick={() => setFilter("all")}
+              className={clsx(
+                "rounded-full px-3 py-1 font-medium transition",
+                filter === "all" ? "bg-violet-brand text-white shadow-sm" : "text-muted hover:text-fg"
+              )}
+            >
+              All ({clips.length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilter("high")}
+              className={clsx(
+                "rounded-full px-3 py-1 font-medium transition",
+                filter === "high" ? "bg-violet-brand text-white shadow-sm" : "text-muted hover:text-fg"
+              )}
+            >
+              Score 80+ ({clips.filter((c) => c.score >= 80).length})
+            </button>
+            <button
+              type="button"
+              onClick={() => setFilter("short")}
+              className={clsx(
+                "rounded-full px-3 py-1 font-medium transition",
+                filter === "short" ? "bg-violet-brand text-white shadow-sm" : "text-muted hover:text-fg"
+              )}
+            >
+              &le;45s ({clips.filter((c) => (c.end_s - c.start_s) <= 45).length})
+            </button>
+          </div>
+
+          <a
+            href={api.exportProjectUrl(project.id)}
+            download
+            className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-violet-brand to-cyan-brand px-3.5 py-1.5 text-xs font-semibold text-white shadow-md shadow-violet-brand/20 transition hover:opacity-95 hover:shadow-violet-brand/40"
+            title="Download all rendered shorts with MP4s, subtitles, thumbnails, and SEO descriptions as a ZIP"
           >
-            All ({clips.length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter("high")}
-            className={clsx(
-              "rounded-full px-3 py-1 font-medium transition",
-              filter === "high" ? "bg-violet-brand text-white shadow-sm" : "text-muted hover:text-fg"
-            )}
-          >
-            Score 80+ ({clips.filter((c) => c.score >= 80).length})
-          </button>
-          <button
-            type="button"
-            onClick={() => setFilter("short")}
-            className={clsx(
-              "rounded-full px-3 py-1 font-medium transition",
-              filter === "short" ? "bg-violet-brand text-white shadow-sm" : "text-muted hover:text-fg"
-            )}
-          >
-            &le;45s ({clips.filter((c) => (c.end_s - c.start_s) <= 45).length})
-          </button>
+            <Download className="size-3.5" />
+            <span>Export All (.ZIP)</span>
+          </a>
         </div>
       </div>
 

@@ -1,14 +1,18 @@
 import asyncio
+import json
 import os
+import re
 import shutil
+import zipfile
 from pathlib import Path
 from typing import BinaryIO
 
 from fastapi import APIRouter, Depends, HTTPException, Response, UploadFile
+from fastapi.responses import FileResponse
 
 from app import repo
 from app.api.deps import Services, get_services
-from app.api.schemas import CreateFromUrl, ProjectOut, project_out
+from app.api.schemas import CreateFromUrl, ExportRequest, ProjectOut, project_out
 from app.models import TERMINAL_STATUSES, Project, SourceType
 from app.pipeline.download import validate_source_url
 from app.pipeline.ingest import UPLOAD_EXTENSIONS
@@ -105,3 +109,79 @@ def retry_project(project_id: str, svc: Services = Depends(get_services)) -> Pro
     if job is not None and job.status not in TERMINAL_STATUSES:
         raise HTTPException(409, "This project is already processing")
     return _start_job(svc, project)
+
+
+@router.api_route("/projects/{project_id}/export", methods=["GET", "POST"])
+def export_project_zip(
+    project_id: str,
+    body: ExportRequest | None = None,
+    svc: Services = Depends(get_services),
+) -> FileResponse:
+    """Exports rendered Shorts with videos, thumbnails, captions, and SEO packs as a ZIP."""
+    project = _get_project_or_404(svc, project_id)
+    all_clips = repo.list_clips(svc.engine, project_id)
+    selected_ids = set(body.clip_ids) if (body and body.clip_ids) else None
+
+    clips_to_export = [
+        c for c in all_clips
+        if (selected_ids is None or c.id in selected_ids) and c.video_file
+    ]
+    if not clips_to_export:
+        raise HTTPException(400, "No rendered clips available for export.")
+
+    clips_dir = svc.workspace.project_dir(project_id) / "clips"
+    export_dir = svc.workspace.project_dir(project_id) / "exports"
+    export_dir.mkdir(parents=True, exist_ok=True)
+    zip_path = export_dir / f"{project.id}_shorts.zip"
+
+    safe_p_title = re.sub(r"[^a-zA-Z0-9_\- ]+", "", project.title or "project").strip() or "clipforge"
+    archive_filename = f"{safe_p_title[:30]}_shorts.zip"
+
+    with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+        for clip in clips_to_export:
+            safe_clip_title = re.sub(r"[^a-zA-Z0-9_\- ]+", "", clip.title).strip() or f"clip_{clip.rank + 1}"
+            folder = f"clip_{clip.rank + 1}_{safe_clip_title[:25]}"
+
+            # 1. MP4 Video
+            vid_file = clips_dir / f"{clip.id}.mp4"
+            if vid_file.exists():
+                zf.write(vid_file, arcname=f"{folder}/{safe_clip_title[:40]}.mp4")
+
+            # 2. Thumbnail
+            thumb_file = clips_dir / f"{clip.id}.jpg"
+            if thumb_file.exists():
+                zf.write(thumb_file, arcname=f"{folder}/thumbnail.jpg")
+
+            # 3. Subtitles
+            ass_file = clips_dir / f"{clip.id}.ass"
+            if ass_file.exists():
+                zf.write(ass_file, arcname=f"{folder}/captions.ass")
+
+            # 4. SEO pack
+            seo_data = None
+            if project.video_id:
+                seo_file = svc.workspace.video(project.video_id).dir / f"seo_{clip.id}.json"
+                if seo_file.exists():
+                    zf.write(seo_file, arcname=f"{folder}/seo.json")
+                    try:
+                        seo_data = json.loads(seo_file.read_text(encoding="utf-8"))
+                    except Exception:
+                        pass
+
+            # 5. Formatted ready-to-copy seo.txt
+            if seo_data:
+                seo_txt = (
+                    f"TITLE (YouTube):\n{seo_data.get('youtube_title', clip.title)}\n\n"
+                    f"DESCRIPTION (YouTube):\n{seo_data.get('youtube_description', '')}\n\n"
+                    f"TIKTOK CAPTION:\n{seo_data.get('tiktok_caption', '')}\n\n"
+                    f"INSTAGRAM REELS CAPTION:\n{seo_data.get('reels_caption', '')}\n\n"
+                    f"HASHTAGS:\n{' '.join(seo_data.get('hashtags', []))}\n\n"
+                    f"CALL TO ACTION:\n{seo_data.get('cta', '')}\n"
+                )
+                zf.writestr(f"{folder}/seo.txt", seo_txt)
+
+    return FileResponse(
+        path=zip_path,
+        media_type="application/zip",
+        headers={"Content-Disposition": f'attachment; filename="{archive_filename}"'},
+    )

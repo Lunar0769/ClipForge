@@ -219,3 +219,53 @@ def test_delete_project_while_job_running_is_quiet(make_client, caplog):
     other = client.post("/api/projects", json={"url": "https://youtu.be/b"}).json()
     wait_job(client, other["latest_job"]["id"], "succeeded", timeout=15)
     assert not [r for r in caplog.records if "Unhandled error" in r.getMessage() or r.exc_info]
+
+
+def test_export_project_zip(make_client, settings):
+    import io
+    import zipfile
+    from app.models import Clip
+    from app.workspace import Workspace
+
+    client = make_client([])
+    engine = client.app.state.services.engine
+    ws: Workspace = client.app.state.services.workspace
+
+    project = client.post("/api/projects", json={"url": "https://youtu.be/a"}).json()
+    p_id = project["id"]
+
+    # Create dummy rendered clip
+    clips_dir = ws.project_dir(p_id) / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+    (clips_dir / "c1.mp4").write_bytes(b"dummy mp4 video")
+    (clips_dir / "c1.jpg").write_bytes(b"dummy thumb")
+    (clips_dir / "c1.ass").write_text("[Script Info]", encoding="utf-8")
+
+    clip = repo.replace_clips(engine, p_id, [
+        Clip(
+            id="c1",
+            project_id=p_id,
+            rank=0,
+            start_s=0.0,
+            end_s=15.0,
+            title="Export Clip",
+            hook_text="Hook",
+            hook_type="statement",
+            why_viral="Viral",
+            score=95,
+            video_file="clips/c1.mp4",
+            thumbnail_file="clips/c1.jpg",
+        )
+    ])[0]
+
+    # Test GET export
+    res = client.get(f"/api/projects/{p_id}/export")
+    assert res.status_code == 200
+    assert res.headers["content-type"] == "application/zip"
+    assert "attachment;" in res.headers["content-disposition"]
+
+    with zipfile.ZipFile(io.BytesIO(res.content)) as zf:
+        names = zf.namelist()
+        assert any(n.endswith(".mp4") for n in names)
+        assert any(n.endswith("thumbnail.jpg") for n in names)
+        assert any(n.endswith("captions.ass") for n in names)

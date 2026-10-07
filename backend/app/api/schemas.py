@@ -95,6 +95,10 @@ class ClipRenderRequest(BaseModel):
     subtitle_style: str = "hormozi"
 
 
+class ExportRequest(BaseModel):
+    clip_ids: list[str] = []
+
+
 def clip_out(clip: Clip, seo_data: dict[str, Any] | None = None) -> ClipOut:
     out = ClipOut.model_validate(clip)
     if seo_data:

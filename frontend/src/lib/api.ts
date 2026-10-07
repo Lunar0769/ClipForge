@@ -61,6 +61,7 @@ export const api = {
   clipVideoUrl: (clipId: string) => `${BASE}/clips/${clipId}/video`,
   clipThumbnailUrl: (clipId: string) => `${BASE}/clips/${clipId}/thumbnail`,
   clipDownloadUrl: (clipId: string) => `${BASE}/clips/${clipId}/download`,
+  exportProjectUrl: (projectId: string) => `${BASE}/projects/${projectId}/export`,
   rerenderClip: (clipId: string, subtitleStyle: string = "hormozi") =>
     request<Clip>(`/clips/${clipId}/render`, {
       method: "POST",
