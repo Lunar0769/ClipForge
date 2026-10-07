@@ -150,3 +150,39 @@ def test_render_stage_is_done_contract(engine, tmp_path):
     repo.update_clip(engine, clip.id, video_file=f"clips/{clip.id}.mp4")
     assert stage.is_done(ctx)
 
+
+def test_render_clip_video_command_args(tmp_path, monkeypatch):
+    from pathlib import Path
+    from unittest.mock import MagicMock
+    from app.pipeline.render import render_clip_video, extract_clip_thumbnail
+
+    src = tmp_path / "source.mp4"
+    src.write_bytes(b"dummy")
+    dst_vid = tmp_path / "clip.mp4"
+    dst_thumb = tmp_path / "clip.jpg"
+
+    seen_cmds = []
+
+    def mock_run(cmd, cancel=None):
+        seen_cmds.append(cmd)
+        # Simulate creating the tmp file
+        for arg in cmd:
+            if str(arg).endswith(".mp4") or str(arg).endswith(".jpg"):
+                Path(arg).write_bytes(b"rendered")
+
+    monkeypatch.setattr("app.pipeline.render._run_cancellable", mock_run)
+
+    render_clip_video(src, dst_vid, 0.0, 15.0)
+    assert dst_vid.exists()
+    vid_cmd = seen_cmds[0]
+    assert "-f" in vid_cmd
+    assert "mp4" in vid_cmd
+    assert str(dst_vid.with_name("clip.tmp.mp4")) in vid_cmd
+
+    extract_clip_thumbnail(src, dst_thumb, 5.0)
+    assert dst_thumb.exists()
+    thumb_cmd = seen_cmds[1]
+    assert "-f" in thumb_cmd
+    assert "image2" in thumb_cmd
+    assert str(dst_thumb.with_name("clip.tmp.jpg")) in thumb_cmd
+

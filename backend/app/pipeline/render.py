@@ -43,7 +43,7 @@ def render_clip_video(
     cancel: threading.Event | None = None,
 ) -> None:
     """Renders a single 9:16 vertical video slice from src to dst."""
-    tmp = dst.with_name(dst.name + ".tmp")
+    tmp = dst.with_name(f"{dst.stem}.tmp{dst.suffix}")
     ffmpeg = _tool("ffmpeg")
     duration = max(1.0, end_s - start_s)
 
@@ -66,6 +66,7 @@ def render_clip_video(
         "-b:a", "128k",
         "-ar", "44100",
         "-movflags", "+faststart",
+        "-f", "mp4",
         str(tmp),
     ]
 
@@ -84,7 +85,7 @@ def extract_clip_thumbnail(
     cancel: threading.Event | None = None,
 ) -> None:
     """Extracts a single high-quality frame snapshot."""
-    tmp = dst.with_name(dst.name + ".tmp")
+    tmp = dst.with_name(f"{dst.stem}.tmp{dst.suffix}")
     ffmpeg = _tool("ffmpeg")
 
     cmd = [
@@ -95,6 +96,7 @@ def extract_clip_thumbnail(
         "-i", str(src),
         "-vframes", "1",
         "-q:v", "2",
+        "-f", "image2",
         str(tmp),
     ]
 
