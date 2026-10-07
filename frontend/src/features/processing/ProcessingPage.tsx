@@ -15,6 +15,7 @@ import { ErrorPanel } from "./ErrorPanel";
 import { PipelineConstellation } from "./PipelineConstellation";
 import { TranscriptStream } from "./TranscriptStream";
 import { useJobEvents } from "./useJobEvents";
+import GalleryView from "../gallery/GalleryView";
 
 const NO_SPEECH = "No speech was detected in this video.";
 
@@ -163,6 +164,12 @@ export default function ProcessingPage() {
           live={status === "running"}
           logs={logs}
         />
+
+        {status === "succeeded" && project && (
+          <div className="mt-12">
+            <GalleryView project={project} />
+          </div>
+        )}
       </div>
     </PageTransition>
   );

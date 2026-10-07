@@ -10,7 +10,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 from starlette.websockets import WebSocketClose
 
 from app import __version__, repo
-from app.api import jobs, projects, system
+from app.api import clips, jobs, projects, system
 from app.api.deps import Services
 from app.config import Settings, get_settings
 from app.db import make_engine
@@ -87,5 +87,6 @@ def create_app(settings: Settings | None = None, stages_factory: StagesFactory |
     app.include_router(system.router, prefix="/api")
     app.include_router(projects.router, prefix="/api")
     app.include_router(jobs.router, prefix="/api")
+    app.include_router(clips.router, prefix="/api")
     app.mount("/files", StaticFiles(directory=workspace.videos_dir), name="files")
     return app

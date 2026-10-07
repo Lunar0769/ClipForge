@@ -2,6 +2,8 @@ from app.config import Settings
 from app.jobs.queue import StagesFactory
 from app.pipeline.download import YtDlpDownloader
 from app.pipeline.ingest import IngestStage
+from app.pipeline.score import ScoreStage
+from app.pipeline.seo import SeoPackStage
 from app.pipeline.transcribe import FasterWhisperTranscriber, TranscribeStage
 
 
@@ -19,5 +21,7 @@ def default_stages_factory(settings: Settings) -> StagesFactory:
             compute_type=settings.whisper_compute_type,
             download_root=settings.models_dir / "whisper",
         )),
+        ScoreStage(),
+        SeoPackStage(),
     ]
     return lambda: stages

@@ -62,3 +62,42 @@ export interface SystemInfo {
   ffmpeg: boolean;
   nvenc: boolean;
 }
+
+export interface SeoPack {
+  youtube_caption: string;
+  tiktok_caption: string;
+  reels_caption: string;
+  hashtags: string[];
+  cta: string;
+}
+
+export interface SubScores {
+  hook: number;
+  emotion: number;
+  novelty: number;
+  value: number;
+  shareability: number;
+  loop_potential: number;
+}
+
+export interface Clip {
+  id: string;
+  project_id: string;
+  rank: number;
+  start_s: number;
+  end_s: number;
+  title: string;
+  hook_text: string;
+  hook_type: string;
+  why_viral: string;
+  payoff_summary: string;
+  score: number;
+  sub_scores: SubScores;
+  keywords: string[];
+  emoji: string[];
+  speakers: string[];
+  video_file: string | null;
+  seo: SeoPack | null;
+  created_at: string;
+  updated_at: string;
+}

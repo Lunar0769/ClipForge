@@ -25,6 +25,7 @@
   --color-muted: var(--muted);
   --color-surface: var(--surface);
   --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
   --color-border: var(--border);
 }
 
@@ -35,6 +36,7 @@
   --muted: #9b9bb4;
   --surface: rgb(255 255 255 / 0.04);
   --surface-2: rgb(255 255 255 / 0.08);
+  --surface-3: rgb(255 255 255 / 0.13);
   --border: rgb(255 255 255 / 0.1);
   color-scheme: dark;
 }
@@ -45,6 +47,7 @@
   --muted: #5d5a73;
   --surface: rgb(18 15 34 / 0.04);
   --surface-2: rgb(18 15 34 / 0.07);
+  --surface-3: rgb(18 15 34 / 0.12);
   --border: rgb(18 15 34 / 0.12);
   color-scheme: light;
 }

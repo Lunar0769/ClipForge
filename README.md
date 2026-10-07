@@ -110,10 +110,10 @@ Missing optional keys simply disable that feature — jobs never fail because of
 ## 🗺️ Roadmap
 
 - [x] **Phase 1 — Foundation:** setup script, API + job queue, download & transcription, UI shell
-- [ ] **Phase 2 — Clip engine:** moment scoring, smart reframing, animated captions, NVENC render, gallery
-- [ ] **Phase 3 — SEO pack:** captions, hashtags, titles, export bundle
+- [x] **Phase 2 — Clip engine:** LLM moment scoring (0–100 virality), candidate extraction, ranked clips gallery
+- [x] **Phase 3 — SEO pack:** per-platform captions (YT Shorts / TikTok / Reels), hashtags, CTA — one-click copy
 - [ ] **Phase 4 — Editor:** timeline trim, transcript editing, style & layout panels
-- [ ] **Phase 5 — Polish:** filler removal, B-roll, music ducking, zooms, thumbnails
+- [ ] **Phase 5 — Polish:** filler removal, B-roll, music ducking, zooms, thumbnails, 9:16 NVENC reframing
 - [ ] **Phase 6 — Global:** translation, dubbing, performance tuning
 
 ## 🧰 Tech stack

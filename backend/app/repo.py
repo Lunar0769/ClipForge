@@ -1,10 +1,12 @@
 """All database access. Every function opens its own short session so callers
 (worker threads, the event loop, request handlers) never share a Session."""
 
+from collections.abc import Sequence
+
 from sqlalchemy import Engine
 from sqlmodel import Session, col, delete, select
 
-from app.models import Job, JobStatus, Project, SourceType, utcnow
+from app.models import Clip, Job, JobStatus, Project, Setting, SourceType, utcnow
 
 
 def _session(engine: Engine) -> Session:
@@ -18,12 +20,14 @@ def create_project(
     source_url: str | None = None,
     original_filename: str | None = None,
     title: str | None = None,
+    options: dict | None = None,
 ) -> Project:
     project = Project(
         source_type=source_type,
         source_url=source_url,
         original_filename=original_filename,
         title=title,
+        options=options,
     )
     with _session(engine) as s:
         s.add(project)
@@ -55,6 +59,7 @@ def update_project(engine: Engine, project_id: str, **fields) -> Project:
 
 def delete_project(engine: Engine, project_id: str) -> None:
     with _session(engine) as s:
+        s.exec(delete(Clip).where(col(Clip.project_id) == project_id))
         s.exec(delete(Job).where(col(Job.project_id) == project_id))
         project = s.get(Project, project_id)
         if project is not None:
@@ -113,3 +118,41 @@ def recover_interrupted_jobs(engine: Engine) -> list[str]:
             select(Job).where(col(Job.status) == JobStatus.queued).order_by(col(Job.created_at))
         )
         return [j.id for j in queued]
+
+
+def get_setting(engine: Engine, key: str) -> dict | None:
+    with _session(engine) as s:
+        row = s.get(Setting, key)
+        return dict(row.value) if row else None
+
+
+def put_setting(engine: Engine, key: str, value: dict) -> None:
+    with _session(engine) as s:
+        row = s.get(Setting, key)
+        if row is None:
+            row = Setting(key=key, value=value)
+        else:
+            row.value = value
+            row.updated_at = utcnow()
+        s.add(row)
+        s.commit()
+
+
+def replace_clips(engine: Engine, project_id: str, clips: Sequence[Clip]) -> list[Clip]:
+    with _session(engine) as s:
+        s.exec(delete(Clip).where(col(Clip.project_id) == project_id))
+        for clip in clips:
+            s.add(clip)
+        s.commit()
+    return list_clips(engine, project_id)
+
+
+def list_clips(engine: Engine, project_id: str) -> list[Clip]:
+    with _session(engine) as s:
+        stmt = select(Clip).where(col(Clip.project_id) == project_id).order_by(col(Clip.rank))
+        return list(s.exec(stmt))
+
+
+def get_clip(engine: Engine, clip_id: str) -> Clip | None:
+    with _session(engine) as s:
+        return s.get(Clip, clip_id)
