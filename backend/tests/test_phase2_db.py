@@ -84,3 +84,23 @@ def test_delete_project_deletes_clips(engine):
     [clip] = repo.replace_clips(engine, p.id, [make_clip(p.id, 1, 0.0)])
     repo.delete_project(engine, p.id)
     assert repo.get_clip(engine, clip.id) is None
+
+
+def test_pick_scorer_prioritizes_gemini_when_set(monkeypatch):
+    from app.pipeline.score import _pick_scorer, Candidate, _safe_score
+
+    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
+    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    scorer, label = _pick_scorer()
+    assert scorer is not None
+    assert label == "gemini-3.5-flash-lite"
+
+    # Verify fallback on failure
+    bad_scorer = lambda txt: (_ for _ in ()).throw(RuntimeError("API error"))
+    cand = Candidate(start=0.0, end=30.0, text="This is an exciting moment in the podcast.")
+    res = _safe_score(bad_scorer, cand)
+    assert res is not None
+    assert "score" in res
+    assert "title" in res

@@ -48,45 +48,91 @@ def _seo_prompt(clip: Clip) -> str:
     })
 
 
+def _seo_fallback(prompt_data: dict[str, Any]) -> dict[str, Any]:
+    title = prompt_data.get("title", "Must-Watch Moment")
+    hook = prompt_data.get("hook", title)
+    keywords = prompt_data.get("keywords", [])
+    tags = ["shorts", "viral", "trending", "fyp", "learn", "foryou"] + [
+        k.replace(" ", "").lower() for k in keywords if isinstance(k, str)
+    ]
+    return {
+        "youtube_caption": f"{title}\n\n{hook}\n\nSubscribe for more!",
+        "tiktok_caption": f"{hook} #shorts #viral",
+        "reels_caption": f"{title}\n\n{hook}\n\nFollow for more daily content!",
+        "hashtags": tags[:18],
+        "cta": "Follow and share if this helped!",
+    }
+
+
 def _call_seo_llm(prompt: str) -> dict[str, Any]:
-    if key := os.environ.get("ANTHROPIC_API_KEY"):
-        import anthropic
-        client = anthropic.Anthropic(api_key=key)
-        msg = client.messages.create(
-            model="claude-3-5-haiku-20241022",
-            max_tokens=512,
-            system=_SEO_SYSTEM,
-            messages=[{"role": "user", "content": prompt}],
-        )
-        return json.loads(msg.content[0].text)
+    import httpx
 
+    # 1. Gemini
     if key := os.environ.get("GEMINI_API_KEY"):
-        import google.generativeai as genai
-        genai.configure(api_key=key)
-        model = genai.GenerativeModel("gemini-2.0-flash", system_instruction=_SEO_SYSTEM)
-        resp = model.generate_content(prompt)
-        raw = resp.text.strip()
-        if raw.startswith("```"):
-            raw = raw.split("```")[1]
-            if raw.startswith("json"):
-                raw = raw[4:]
-        return json.loads(raw)
+        for model in ["gemini-3.5-flash-lite", "gemini-3.5-flash", "gemini-flash-latest"]:
+            url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent?key={key}"
+            payload = {
+                "system_instruction": {"parts": [{"text": _SEO_SYSTEM}]},
+                "contents": [{"parts": [{"text": prompt}]}],
+                "generationConfig": {"response_mime_type": "application/json"},
+            }
+            try:
+                resp = httpx.post(url, json=payload, timeout=30.0)
+                if resp.status_code == 200:
+                    raw = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
+                    if raw.startswith("```"):
+                        raw = raw.split("```")[1]
+                        if raw.startswith("json"):
+                            raw = raw[4:]
+                    return json.loads(raw)
+            except Exception as exc:
+                logger.warning("Gemini SEO failed on %s: %s", model, exc)
 
+    # 2. Anthropic
+    if key := os.environ.get("ANTHROPIC_API_KEY"):
+        try:
+            url = "https://api.anthropic.com/v1/messages"
+            headers = {"x-api-key": key, "anthropic-version": "2023-06-01", "content-type": "application/json"}
+            payload = {
+                "model": "claude-3-5-haiku-20241022",
+                "max_tokens": 512,
+                "system": _SEO_SYSTEM,
+                "messages": [{"role": "user", "content": prompt}],
+            }
+            resp = httpx.post(url, json=payload, headers=headers, timeout=30.0)
+            if resp.status_code == 200:
+                raw = resp.json()["content"][0]["text"].strip()
+                if raw.startswith("```"):
+                    raw = raw.split("```")[1]
+                    if raw.startswith("json"):
+                        raw = raw[4:]
+                return json.loads(raw)
+        except Exception as exc:
+            logger.warning("Anthropic SEO failed: %s", exc)
+
+    # 3. OpenAI
     if key := os.environ.get("OPENAI_API_KEY"):
-        from openai import OpenAI
-        client = OpenAI(api_key=key)
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "system", "content": _SEO_SYSTEM}, {"role": "user", "content": prompt}],
-            max_tokens=512,
-            response_format={"type": "json_object"},
-        )
-        return json.loads(resp.choices[0].message.content)
+        try:
+            url = "https://api.openai.com/v1/chat/completions"
+            headers = {"Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+            payload = {
+                "model": "gpt-4o-mini",
+                "messages": [{"role": "system", "content": _SEO_SYSTEM}, {"role": "user", "content": prompt}],
+                "max_tokens": 512,
+                "response_format": {"type": "json_object"},
+            }
+            resp = httpx.post(url, json=payload, headers=headers, timeout=30.0)
+            if resp.status_code == 200:
+                return json.loads(resp.json()["choices"][0]["message"]["content"])
+        except Exception as exc:
+            logger.warning("OpenAI SEO failed: %s", exc)
 
-    raise StageError(
-        "No LLM configured for SEO pack generation.",
-        "Add ANTHROPIC_API_KEY, GEMINI_API_KEY or OPENAI_API_KEY to .env.",
-    )
+    # Fallback template if all LLMs fail or keys missing
+    try:
+        data = json.loads(prompt)
+    except Exception:
+        data = {}
+    return _seo_fallback(data)
 
 
 class SeoPackStage:

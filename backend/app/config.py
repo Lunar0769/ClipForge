@@ -1,16 +1,23 @@
+import os
 from functools import lru_cache
 from pathlib import Path
 
+import dotenv
 from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+
+# Ensure .env is loaded into os.environ so all non-prefixed API keys (GEMINI_API_KEY, etc.) are available
+dotenv.load_dotenv(REPO_ROOT / ".env", override=True)
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
         env_prefix="CLIPFORGE_", env_file=REPO_ROOT / ".env", extra="ignore"
     )
+
+    llm_provider: str | None = None  # auto | gemini | anthropic | openai | ollama
 
     workspace_dir: Path = REPO_ROOT / "workspace"
     models_dir: Path = REPO_ROOT / "models"
