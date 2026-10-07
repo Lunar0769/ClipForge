@@ -1,12 +1,20 @@
 import { useQuery } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
-import { useState, useRef } from "react";
-import { Check, Copy, ChevronDown, ChevronUp, Hash, Sparkles, TrendingUp, MessageCircle } from "lucide-react";
+import { useState, useRef, useMemo } from "react";
+import {
+  Check,
+  Copy,
+  ChevronDown,
+  ChevronUp,
+  Hash,
+  Sparkles,
+  TrendingUp,
+  MessageCircle,
+} from "lucide-react";
 import clsx from "clsx";
 import type { Clip, SeoPack, SubScores } from "../../lib/types";
 import { api } from "../../lib/api";
 import { Skeleton } from "../../components/Skeleton";
-import { PageTransition } from "../../components/PageTransition";
 import type { Project } from "../../lib/types";
 
 function YouTubeIcon({ className }: { className?: string }) {
@@ -41,31 +49,33 @@ function fmtDuration(start: number, end: number) {
 
 // ── Score ring ─────────────────────────────────────────────────────────────────
 
-function ScoreRing({ score }: { score: number }) {
-  const r = 28;
+function ScoreRing({ score, size = 60 }: { score: number; size?: number }) {
+  const r = size * 0.38;
   const circ = 2 * Math.PI * r;
   const fill = (score / 100) * circ;
-  const hue = Math.round((score / 100) * 120); // 0→red, 120→green
+  const hue = Math.round((score / 100) * 120);
 
   return (
-    <div className="relative flex items-center justify-center" style={{ width: 72, height: 72 }}>
-      <svg width={72} height={72} className="-rotate-90">
-        <circle cx={36} cy={36} r={r} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth={6} />
+    <div className="relative flex shrink-0 items-center justify-center" style={{ width: size, height: size }}>
+      <svg width={size} height={size} className="-rotate-90">
+        <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,.08)" strokeWidth={size > 60 ? 5 : 4} />
         <motion.circle
-          cx={36} cy={36} r={r}
+          cx={size / 2}
+          cy={size / 2}
+          r={r}
           fill="none"
           stroke={`hsl(${hue} 70% 55%)`}
-          strokeWidth={6}
+          strokeWidth={size > 60 ? 5 : 4}
           strokeLinecap="round"
           strokeDasharray={circ}
           initial={{ strokeDashoffset: circ }}
           animate={{ strokeDashoffset: circ - fill }}
-          transition={{ duration: 1.2, ease: "easeOut" }}
+          transition={{ duration: 1, ease: "easeOut" }}
         />
       </svg>
       <span
-        className="absolute font-display text-lg font-bold"
-        style={{ color: `hsl(${hue} 70% 65%)` }}
+        className="absolute font-display font-bold leading-none"
+        style={{ color: `hsl(${hue} 70% 65%)`, fontSize: size > 60 ? "1rem" : "0.85rem" }}
       >
         {score}
       </span>
@@ -86,19 +96,19 @@ const SUB_LABELS: Record<keyof SubScores, string> = {
 
 function SubScoreBars({ scores }: { scores: SubScores }) {
   return (
-    <div className="grid grid-cols-2 gap-x-4 gap-y-2 text-xs">
+    <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
       {(Object.entries(SUB_LABELS) as [keyof SubScores, string][]).map(([key, label]) => (
         <div key={key} className="flex items-center gap-2">
-          <span className="w-12 text-muted shrink-0">{label}</span>
+          <span className="w-11 text-muted shrink-0 text-[11px]">{label}</span>
           <div className="flex-1 h-1.5 rounded-full bg-surface-2 overflow-hidden">
             <motion.div
               className="h-full rounded-full bg-gradient-to-r from-violet-brand to-cyan-brand"
               initial={{ width: 0 }}
               animate={{ width: `${scores[key]}%` }}
-              transition={{ duration: 0.8, ease: "easeOut", delay: 0.2 }}
+              transition={{ duration: 0.6, ease: "easeOut" }}
             />
           </div>
-          <span className="w-6 text-right tabular-nums text-muted">{scores[key]}</span>
+          <span className="w-5 text-right tabular-nums text-muted text-[10px]">{scores[key]}</span>
         </div>
       ))}
     </div>
@@ -111,7 +121,8 @@ function CopyButton({ text, label }: { text: string; label: string }) {
   const [copied, setCopied] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const handleCopy = () => {
+  const handleCopy = (e: React.MouseEvent) => {
+    e.stopPropagation();
     void navigator.clipboard.writeText(text).then(() => {
       setCopied(true);
       if (timer.current) clearTimeout(timer.current);
@@ -124,23 +135,21 @@ function CopyButton({ text, label }: { text: string; label: string }) {
       type="button"
       onClick={handleCopy}
       className={clsx(
-        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium transition-all",
+        "inline-flex items-center gap-1 rounded-full px-2.5 py-1 text-[11px] font-medium transition-all",
         copied
           ? "bg-green-500/20 text-green-400"
-          : "bg-surface-2 text-muted hover:bg-surface-3 hover:text-fg",
+          : "bg-surface-2 text-muted hover:bg-surface-3 hover:text-fg"
       )}
     >
       {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-      {copied ? "Copied!" : label}
+      {copied ? "Copied" : label}
     </button>
   );
 }
 
-// ── SEO accordion ─────────────────────────────────────────────────────────────
+// ── SEO section ────────────────────────────────────────────────────────────────
 
 function SeoSection({ seo }: { seo: SeoPack }) {
-  const [open, setOpen] = useState(false);
-
   const platforms = [
     { label: "YouTube Shorts", icon: YouTubeIcon, text: seo.youtube_caption, color: "text-red-400" },
     { label: "TikTok", icon: MessageCircle, text: seo.tiktok_caption, color: "text-pink-400" },
@@ -148,142 +157,147 @@ function SeoSection({ seo }: { seo: SeoPack }) {
   ];
 
   return (
-    <div className="rounded-xl border border-border bg-surface">
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center justify-between px-4 py-3 text-sm font-medium"
-      >
-        <span className="flex items-center gap-2 text-muted">
-          <Hash className="size-4 text-violet-brand" />
-          SEO Pack · captions + hashtags
-        </span>
-        {open ? <ChevronUp className="size-4 text-muted" /> : <ChevronDown className="size-4 text-muted" />}
-      </button>
-      <AnimatePresence>
-        {open && (
-          <motion.div
-            key="seo"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-            className="overflow-hidden"
-          >
-            <div className="space-y-4 px-4 pb-4">
-              {platforms.map(({ label, icon: Icon, text, color }) => (
-                <div key={label}>
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <span className={clsx("flex items-center gap-1.5 text-xs font-medium", color)}>
-                      <Icon className="size-3.5" />
-                      {label}
-                    </span>
-                    <CopyButton text={text} label="Copy caption" />
-                  </div>
-                  <p className="rounded-lg bg-surface-2 px-3 py-2 text-sm leading-relaxed text-fg/80">{text}</p>
-                </div>
-              ))}
+    <div className="rounded-xl border border-border bg-surface-2/40 p-3 space-y-3">
+      <div className="flex items-center gap-1.5 text-xs font-semibold text-muted">
+        <Hash className="size-3.5 text-violet-brand" />
+        <span>Platform Captions & SEO</span>
+      </div>
 
-              {seo.hashtags.length > 0 && (
-                <div>
-                  <div className="mb-2 flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted">{seo.hashtags.length} hashtags</span>
-                    <CopyButton
-                      text={seo.hashtags.map((h) => `#${h}`).join(" ")}
-                      label="Copy all"
-                    />
-                  </div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {seo.hashtags.map((tag) => (
-                      <span
-                        key={tag}
-                        className="rounded-full bg-violet-brand/10 px-2.5 py-0.5 text-xs text-violet-brand"
-                      >
-                        #{tag}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-              )}
-
-              {seo.cta && (
-                <div>
-                  <div className="mb-1.5 flex items-center justify-between">
-                    <span className="text-xs font-medium text-muted">CTA</span>
-                    <CopyButton text={seo.cta} label="Copy CTA" />
-                  </div>
-                  <p className="rounded-lg bg-surface-2 px-3 py-2 text-sm text-fg/80">{seo.cta}</p>
-                </div>
-              )}
+      <div className="space-y-2.5">
+        {platforms.map(({ label, icon: Icon, text, color }) => (
+          <div key={label} className="rounded-lg bg-surface p-2.5 border border-border/60">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className={clsx("flex items-center gap-1.5 text-[11px] font-medium", color)}>
+                <Icon className="size-3" />
+                {label}
+              </span>
+              <CopyButton text={text} label="Copy" />
             </div>
-          </motion.div>
+            <p className="text-xs leading-relaxed text-fg/85 line-clamp-3 hover:line-clamp-none transition-all">{text}</p>
+          </div>
+        ))}
+
+        {seo.hashtags.length > 0 && (
+          <div className="rounded-lg bg-surface p-2.5 border border-border/60">
+            <div className="mb-1.5 flex items-center justify-between">
+              <span className="text-[11px] font-medium text-muted">{seo.hashtags.length} Hashtags</span>
+              <CopyButton
+                text={seo.hashtags.map((h) => `#${h}`).join(" ")}
+                label="Copy hashtags"
+              />
+            </div>
+            <div className="flex flex-wrap gap-1 max-h-24 overflow-y-auto">
+              {seo.hashtags.map((tag) => (
+                <span
+                  key={tag}
+                  className="rounded-md bg-violet-brand/10 px-2 py-0.5 text-[10px] text-violet-brand"
+                >
+                  #{tag}
+                </span>
+              ))}
+            </div>
+          </div>
         )}
-      </AnimatePresence>
+      </div>
     </div>
   );
 }
 
-// ── Clip card ─────────────────────────────────────────────────────────────────
+// ── Clip Card ──────────────────────────────────────────────────────────────────
 
-function ClipCard({ clip, index }: { clip: Clip; index: number }) {
+interface ClipCardProps {
+  clip: Clip;
+  index: number;
+  isSelected?: boolean;
+  onSelect?: () => void;
+}
+
+function ClipCard({ clip, index, isSelected, onSelect }: ClipCardProps) {
   const [expanded, setExpanded] = useState(false);
 
   return (
     <motion.article
-      initial={{ opacity: 0, y: 24 }}
+      initial={{ opacity: 0, y: 16 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ delay: index * 0.06, duration: 0.4 }}
-      className="group relative flex flex-col gap-4 rounded-2xl border border-border bg-surface p-5 shadow-sm transition hover:border-violet-brand/40 hover:shadow-violet-brand/5"
-    >
-      {/* Rank badge */}
-      <div className="absolute right-5 top-5 flex items-center gap-1 text-xs text-muted">
-        <TrendingUp className="size-3" />
-        #{clip.rank + 1}
-      </div>
-
-      {/* Header */}
-      <div className="flex items-start gap-4 pr-8">
-        <ScoreRing score={clip.score} />
-        <div className="min-w-0 flex-1">
-          <p className="text-xs text-muted">{fmtDuration(clip.start_s, clip.end_s)}</p>
-          <h3 className="mt-0.5 font-display text-lg font-semibold leading-snug">{clip.title}</h3>
-          <p className="mt-1 text-sm text-muted">{clip.why_viral}</p>
-        </div>
-      </div>
-
-      {/* Hook pill */}
-      {clip.hook_text && (
-        <div className="flex items-start gap-2 rounded-xl border border-violet-brand/20 bg-violet-brand/5 px-3 py-2">
-          <Sparkles className="mt-0.5 size-3.5 shrink-0 text-violet-brand" />
-          <p className="text-sm italic text-fg/80">&ldquo;{clip.hook_text}&rdquo;</p>
-        </div>
+      transition={{ delay: Math.min(index * 0.04, 0.4), duration: 0.3 }}
+      onClick={onSelect}
+      className={clsx(
+        "group relative flex flex-col justify-between rounded-2xl border bg-surface p-4 transition-all duration-200 cursor-pointer shadow-sm",
+        isSelected
+          ? "border-violet-brand ring-1 ring-violet-brand shadow-violet-brand/10"
+          : "border-border hover:border-violet-brand/50 hover:shadow-md hover:shadow-violet-brand/5"
       )}
+    >
+      <div>
+        {/* Top Header: Rank, Duration, Virality Score */}
+        <div className="flex items-start justify-between gap-3 mb-2.5">
+          <div className="flex items-center gap-2">
+            <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-0.5 text-[11px] font-semibold text-fg/90">
+              <TrendingUp className="size-3 text-violet-brand" />
+              #{clip.rank + 1}
+            </span>
+            <span className="font-mono text-xs text-muted">
+              {fmtDuration(clip.start_s, clip.end_s)}
+            </span>
+          </div>
 
-      {/* Keywords + emoji */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        {clip.emoji.map((e) => (
-          <span key={e} className="text-lg leading-none">{e}</span>
-        ))}
-        {clip.keywords.map((kw) => (
-          <span
-            key={kw}
-            className="rounded-full border border-border px-2.5 py-0.5 text-xs text-muted"
-          >
-            {kw}
-          </span>
-        ))}
+          <ScoreRing score={clip.score} size={48} />
+        </div>
+
+        {/* Title */}
+        <h3 className="font-display text-base font-semibold leading-snug tracking-tight text-fg group-hover:text-violet-300 transition-colors">
+          {clip.title}
+        </h3>
+
+        {/* Viral Reason */}
+        <p className="mt-1 text-xs text-muted line-clamp-2 leading-relaxed">
+          {clip.why_viral}
+        </p>
+
+        {/* Hook Card */}
+        {clip.hook_text && (
+          <div className="mt-2.5 flex items-start gap-2 rounded-xl border border-violet-brand/20 bg-violet-brand/5 px-2.5 py-2">
+            <Sparkles className="mt-0.5 size-3.5 shrink-0 text-violet-brand" />
+            <p className="text-xs italic text-fg/90 leading-snug">&ldquo;{clip.hook_text}&rdquo;</p>
+          </div>
+        )}
+
+        {/* Keywords + Emoji */}
+        <div className="mt-3 flex flex-wrap items-center gap-1.5">
+          {clip.emoji.map((e) => (
+            <span key={e} className="text-sm leading-none">{e}</span>
+          ))}
+          {clip.keywords.slice(0, 4).map((kw) => (
+            <span
+              key={kw}
+              className="rounded-md border border-border/80 bg-surface-2/40 px-2 py-0.5 text-[10px] text-muted"
+            >
+              {kw}
+            </span>
+          ))}
+        </div>
       </div>
 
-      {/* Expand toggle */}
-      <button
-        type="button"
-        onClick={() => setExpanded((v) => !v)}
-        className="flex items-center gap-1.5 self-start text-xs text-muted transition hover:text-fg"
-      >
-        {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
-        {expanded ? "Less detail" : "Sub-scores & SEO pack"}
-      </button>
+      {/* Footer Controls */}
+      <div className="mt-3.5 pt-3 border-t border-border/60 flex items-center justify-between gap-2">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setExpanded((v) => !v);
+          }}
+          className="inline-flex items-center gap-1 text-xs text-muted hover:text-fg transition font-medium"
+        >
+          {expanded ? <ChevronUp className="size-3.5" /> : <ChevronDown className="size-3.5" />}
+          <span>{expanded ? "Hide Details" : "SEO & Sub-scores"}</span>
+        </button>
 
+        <span className="text-[11px] text-violet-400 font-medium group-hover:underline">
+          {isSelected ? "Active clip" : "Focus clip →"}
+        </span>
+      </div>
+
+      {/* Expandable Section */}
       <AnimatePresence>
         {expanded && (
           <motion.div
@@ -292,18 +306,19 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="space-y-4 overflow-hidden"
+            className="mt-3 pt-3 border-t border-border space-y-3 overflow-hidden text-left"
+            onClick={(e) => e.stopPropagation()}
           >
             <SubScoreBars scores={clip.sub_scores} />
+
             {clip.payoff_summary && (
-              <p className="text-sm text-muted">
+              <p className="text-xs text-muted">
                 <span className="font-medium text-fg">Payoff: </span>
                 {clip.payoff_summary}
               </p>
             )}
-            {clip.seo && Object.values(clip.seo).some((v) => (Array.isArray(v) ? v.length : v)) && (
-              <SeoSection seo={clip.seo} />
-            )}
+
+            {clip.seo && <SeoSection seo={clip.seo} />}
           </motion.div>
         )}
       </AnimatePresence>
@@ -311,24 +326,41 @@ function ClipCard({ clip, index }: { clip: Clip; index: number }) {
   );
 }
 
-// ── Gallery page ──────────────────────────────────────────────────────────────
+// ── Gallery View Main ──────────────────────────────────────────────────────────
 
 interface GalleryViewProps {
   project: Project;
+  activeClipId?: string | null;
+  onSelectClip?: (clip: Clip) => void;
+  isCompactGrid?: boolean;
 }
 
-export default function GalleryView({ project }: GalleryViewProps) {
+export default function GalleryView({
+  project,
+  activeClipId,
+  onSelectClip,
+  isCompactGrid = false,
+}: GalleryViewProps) {
+  const [filter, setFilter] = useState<"all" | "high" | "short">("all");
+
   const { data: clips, isLoading, isError } = useQuery({
     queryKey: ["clips", project.id],
     queryFn: () => api.listClips(project.id),
     staleTime: 30_000,
   });
 
+  const filteredClips = useMemo(() => {
+    if (!clips) return [];
+    if (filter === "high") return clips.filter((c) => c.score >= 80);
+    if (filter === "short") return clips.filter((c) => (c.end_s - c.start_s) <= 45);
+    return clips;
+  }, [clips, filter]);
+
   if (isLoading) {
     return (
-      <div className="space-y-4">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-48 rounded-2xl" />
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {Array.from({ length: 4 }).map((_, i) => (
+          <Skeleton key={i} className="h-52 rounded-2xl" />
         ))}
       </div>
     );
@@ -336,15 +368,15 @@ export default function GalleryView({ project }: GalleryViewProps) {
 
   if (isError || !clips) {
     return (
-      <p className="text-sm text-muted">
+      <div className="rounded-2xl border border-border bg-surface p-6 text-center text-sm text-muted">
         Could not load clips. Make sure the scoring stage completed.
-      </p>
+      </div>
     );
   }
 
   if (clips.length === 0) {
     return (
-      <div className="rounded-2xl border border-dashed border-border py-16 text-center">
+      <div className="rounded-2xl border border-dashed border-border py-14 text-center">
         <Sparkles className="mx-auto mb-3 size-8 text-muted" />
         <p className="text-sm font-medium">No clips found yet.</p>
         <p className="mt-1 text-xs text-muted">
@@ -355,23 +387,66 @@ export default function GalleryView({ project }: GalleryViewProps) {
   }
 
   return (
-    <PageTransition>
-      <div className="space-y-5">
-        <header className="flex items-end justify-between">
-          <div>
-            <p className="text-xs uppercase tracking-[0.2em] text-muted">Clips</p>
-            <h2 className="mt-1 font-display text-2xl font-semibold">
-              {clips.length} viral moment{clips.length !== 1 ? "s" : ""} found
-            </h2>
+    <div className="space-y-4">
+      {/* Header and Filter Chips */}
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">Viral Hub</span>
+            <span className="rounded-full bg-violet-brand/15 px-2 py-0.5 text-xs font-medium text-violet-300">
+              {clips.length} moments
+            </span>
           </div>
-          <p className="text-xs text-muted">Ranked by virality score</p>
-        </header>
-        <div className="space-y-4">
-          {clips.map((clip, i) => (
-            <ClipCard key={clip.id} clip={clip} index={i} />
-          ))}
+          <h2 className="mt-0.5 font-display text-xl font-semibold">Ranked Clip Candidates</h2>
+        </div>
+
+        {/* Filter Pills */}
+        <div className="flex items-center gap-1.5 rounded-full border border-border bg-surface p-1 text-xs">
+          <button
+            type="button"
+            onClick={() => setFilter("all")}
+            className={clsx(
+              "rounded-full px-3 py-1 font-medium transition",
+              filter === "all" ? "bg-violet-brand text-white shadow-sm" : "text-muted hover:text-fg"
+            )}
+          >
+            All ({clips.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter("high")}
+            className={clsx(
+              "rounded-full px-3 py-1 font-medium transition",
+              filter === "high" ? "bg-violet-brand text-white shadow-sm" : "text-muted hover:text-fg"
+            )}
+          >
+            Score 80+ ({clips.filter((c) => c.score >= 80).length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter("short")}
+            className={clsx(
+              "rounded-full px-3 py-1 font-medium transition",
+              filter === "short" ? "bg-violet-brand text-white shadow-sm" : "text-muted hover:text-fg"
+            )}
+          >
+            &le;45s ({clips.filter((c) => (c.end_s - c.start_s) <= 45).length})
+          </button>
         </div>
       </div>
-    </PageTransition>
+
+      {/* Responsive Box Grid Layout */}
+      <div className={clsx("grid gap-4", isCompactGrid ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-2 xl:grid-cols-2")}>
+        {filteredClips.map((clip, i) => (
+          <ClipCard
+            key={clip.id}
+            clip={clip}
+            index={i}
+            isSelected={activeClipId === clip.id}
+            onSelect={() => onSelectClip?.(clip)}
+          />
+        ))}
+      </div>
+    </div>
   );
 }

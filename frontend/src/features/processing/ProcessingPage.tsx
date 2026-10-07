@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, useSpring, useTransform } from "motion/react";
 import { useEffect, useState } from "react";
 import { useParams } from "react-router";
+import { Columns2, LayoutGrid, FileText, CheckCircle2 } from "lucide-react";
+import clsx from "clsx";
 import { NotFound } from "../../components/NotFound";
 import { PageTransition } from "../../components/PageTransition";
 import { Skeleton } from "../../components/Skeleton";
@@ -9,7 +11,7 @@ import { StatusChip } from "../../components/StatusChip";
 import { api } from "../../lib/api";
 import { projectTitle } from "../../lib/format";
 import { estimateEtaFromBaseline, formatEta, type EtaBaseline, overallProgress, stagesFromJob } from "../../lib/progress";
-import { isTerminal, type JobStatus } from "../../lib/types";
+import { isTerminal, type JobStatus, type Clip } from "../../lib/types";
 import { useNow } from "../../lib/useNow";
 import { ErrorPanel } from "./ErrorPanel";
 import { PipelineConstellation } from "./PipelineConstellation";
@@ -39,6 +41,9 @@ export default function ProcessingPage() {
   const view = useJobEvents(job?.id);
   const status: JobStatus | undefined = view.jobStatus ?? job?.status;
 
+  const [activeClip, setActiveClip] = useState<Clip | null>(null);
+  const [viewMode, setViewMode] = useState<"split" | "clips" | "transcript">("split");
+
   useEffect(() => {
     if (isTerminal(view.jobStatus)) {
       void queryClient.invalidateQueries({ queryKey: ["project", projectId] });
@@ -59,7 +64,6 @@ export default function ProcessingPage() {
 
   const now = useNow(1000);
   const stages = stagesQuery.data ?? [];
-  // No live events (e.g. the API restarted since the job ran): rebuild the stages from the REST job.
   const stageStates = Object.keys(view.stages).length || !job ? view.stages : stagesFromJob(stages, job);
   const progress = overallProgress(stages, { jobStatus: status ?? null, stages: stageStates });
   const [baseline, setBaseline] = useState<EtaBaseline | null>(null);
@@ -74,7 +78,7 @@ export default function ProcessingPage() {
   const project = projectQuery.data;
   if (!project) {
     return (
-      <div className="mx-auto max-w-6xl space-y-4 px-4 py-14 sm:px-6">
+      <div className="mx-auto max-w-7xl space-y-4 px-4 py-14 sm:px-6">
         <Skeleton className="h-10 w-2/3" />
         <Skeleton className="h-28" />
       </div>
@@ -82,21 +86,32 @@ export default function ProcessingPage() {
   }
 
   const eta = estimateEtaFromBaseline(baseline, now, progress);
-  // Once the job succeeded the saved transcript is complete; replayed live partials may be truncated.
   const saved = status === "succeeded" ? transcriptQuery.data : undefined;
   const lines = saved ? saved.segments : view.transcript;
   const logs = saved && saved.segments.length === 0 && !view.logs.includes(NO_SPEECH)
     ? [...view.logs, NO_SPEECH]
     : view.logs;
   const active = status === "running" || status === "queued";
+  const isSucceeded = status === "succeeded";
 
   return (
     <PageTransition>
-      <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 sm:py-14">
+      <div className="mx-auto max-w-7xl px-4 py-8 sm:px-6 sm:py-10">
+        {/* Header */}
         <header className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
-            <p className="text-xs uppercase tracking-[0.2em] text-muted">Project</p>
-            <h1 className="mt-2 truncate font-display text-3xl font-semibold tracking-tight sm:text-4xl">{projectTitle(project)}</h1>
+            <div className="flex items-center gap-2">
+              <span className="text-xs font-semibold uppercase tracking-[0.2em] text-muted">Project Studio</span>
+              {isSucceeded && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-green-500/10 px-2 py-0.5 text-[11px] font-medium text-green-400">
+                  <CheckCircle2 className="size-3" />
+                  Ready
+                </span>
+              )}
+            </div>
+            <h1 className="mt-1.5 truncate font-display text-2xl font-semibold tracking-tight sm:text-3xl text-fg">
+              {projectTitle(project)}
+            </h1>
           </div>
           <div className="flex items-center gap-3">
             {status && <StatusChip status={status} />}
@@ -140,6 +155,7 @@ export default function ProcessingPage() {
 
         <PipelineConstellation stages={stages} state={stageStates} />
 
+        {/* Errors / Cancellation */}
         {status === "failed" && (
           <ErrorPanel
             title="Something went wrong"
@@ -149,25 +165,136 @@ export default function ProcessingPage() {
             pending={retry.isPending}
           />
         )}
-        {(retry.isError || cancel.isError) && (
+        {(retry.error || cancel.error) && (
           <p role="alert" className="mt-4 text-sm text-red-400">
             {((retry.error ?? cancel.error) as Error).message}
           </p>
         )}
         {status === "cancelled" && (
-          <ErrorPanel title="Cancelled" message="This job was cancelled." hint={null} onRetry={() => retry.mutate()} pending={retry.isPending} />
+          <ErrorPanel
+            title="Cancelled"
+            message="This job was cancelled."
+            hint={null}
+            onRetry={() => retry.mutate()}
+            pending={retry.isPending}
+          />
         )}
 
-        <TranscriptStream
-          lines={lines}
-          language={view.language ?? transcriptQuery.data?.language ?? null}
-          live={status === "running"}
-          logs={logs}
-        />
+        {/* WORKBENCH CONTENT */}
+        {!isSucceeded ? (
+          /* Live processing mode: simple vertical stream */
+          <div className="mt-8">
+            <TranscriptStream
+              lines={lines}
+              language={view.language ?? transcriptQuery.data?.language ?? null}
+              live={status === "running"}
+              logs={logs}
+            />
+          </div>
+        ) : (
+          /* Succeeded mode: PRO STUDIO BOX LAYOUT */
+          <div className="mt-6 space-y-4">
+            {/* Studio View Switcher Bar */}
+            <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-border bg-surface p-2">
+              <div className="flex items-center gap-1 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setViewMode("split")}
+                  className={clsx(
+                    "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 font-medium transition",
+                    viewMode === "split"
+                      ? "bg-violet-brand text-white shadow-sm"
+                      : "text-muted hover:text-fg hover:bg-surface-2"
+                  )}
+                >
+                  <Columns2 className="size-3.5" />
+                  <span className="hidden sm:inline">Studio Workbench</span>
+                  <span className="sm:hidden">Split</span>
+                </button>
 
-        {status === "succeeded" && project && (
-          <div className="mt-12">
-            <GalleryView project={project} />
+                <button
+                  type="button"
+                  onClick={() => setViewMode("clips")}
+                  className={clsx(
+                    "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 font-medium transition",
+                    viewMode === "clips"
+                      ? "bg-violet-brand text-white shadow-sm"
+                      : "text-muted hover:text-fg hover:bg-surface-2"
+                  )}
+                >
+                  <LayoutGrid className="size-3.5" />
+                  <span>Clips Grid</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setViewMode("transcript")}
+                  className={clsx(
+                    "inline-flex items-center gap-1.5 rounded-xl px-3 py-1.5 font-medium transition",
+                    viewMode === "transcript"
+                      ? "bg-violet-brand text-white shadow-sm"
+                      : "text-muted hover:text-fg hover:bg-surface-2"
+                  )}
+                >
+                  <FileText className="size-3.5" />
+                  <span>Transcript</span>
+                </button>
+              </div>
+
+              <div className="text-xs text-muted pr-2 hidden md:block">
+                Click any clip to focus & jump to its spoken transcript
+              </div>
+            </div>
+
+            {/* Layout Panels */}
+            {viewMode === "split" && (
+              <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                {/* Left Box: Viral Clips Grid (7 Cols) */}
+                <div className="lg:col-span-7 space-y-4">
+                  <GalleryView
+                    project={project}
+                    activeClipId={activeClip?.id}
+                    onSelectClip={setActiveClip}
+                    isCompactGrid
+                  />
+                </div>
+
+                {/* Right Box: Sticky Inspector Transcript Box (5 Cols) */}
+                <div className="lg:col-span-5 lg:sticky lg:top-6">
+                  <TranscriptStream
+                    lines={lines}
+                    language={view.language ?? transcriptQuery.data?.language ?? null}
+                    live={false}
+                    logs={logs}
+                    activeRange={activeClip ? { start: activeClip.start_s, end: activeClip.end_s } : null}
+                    maxHeightClass="max-h-[38rem]"
+                  />
+                </div>
+              </div>
+            )}
+
+            {viewMode === "clips" && (
+              <div>
+                <GalleryView
+                  project={project}
+                  activeClipId={activeClip?.id}
+                  onSelectClip={setActiveClip}
+                />
+              </div>
+            )}
+
+            {viewMode === "transcript" && (
+              <div>
+                <TranscriptStream
+                  lines={lines}
+                  language={view.language ?? transcriptQuery.data?.language ?? null}
+                  live={false}
+                  logs={logs}
+                  activeRange={activeClip ? { start: activeClip.start_s, end: activeClip.end_s } : null}
+                  maxHeightClass="max-h-[46rem]"
+                />
+              </div>
+            )}
           </div>
         )}
       </div>
