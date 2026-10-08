@@ -153,6 +153,8 @@ def rerender_clip(
         start_s=clip.start_s,
         end_s=clip.end_s,
         ass_file=ass_dst if ass_dst.exists() else None,
+        auto_zoom=req.auto_zoom,
+        music_mood=req.music_mood,
     )
 
     updated = repo.update_clip(
@@ -160,5 +162,7 @@ def rerender_clip(
         clip.id,
         video_file=f"clips/{clip.id}.mp4",
         subtitle_style=req.subtitle_style,
+        auto_zoom=req.auto_zoom,
+        music_mood=req.music_mood,
     )
     return clip_out(updated, _seo_data(svc, updated.id, updated.project_id))

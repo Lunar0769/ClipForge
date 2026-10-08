@@ -16,6 +16,8 @@ import {
   Film,
   X,
   RefreshCw,
+  ZoomIn,
+  Music,
 } from "lucide-react";
 import clsx from "clsx";
 import type { Clip, SeoPack, SubScores } from "../../lib/types";
@@ -223,6 +225,8 @@ function ClipCard({ clip, index, isSelected, onSelect }: ClipCardProps) {
   const [isPlaying, setIsPlaying] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [currentStyle, setCurrentStyle] = useState(clip.subtitle_style || "hormozi");
+  const [autoZoom, setAutoZoom] = useState(clip.auto_zoom !== false);
+  const [musicMood, setMusicMood] = useState<string | null>(clip.music_mood || null);
   const [isRerendering, setIsRerendering] = useState(false);
   const [videoKey, setVideoKey] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -250,17 +254,28 @@ function ClipCard({ clip, index, isSelected, onSelect }: ClipCardProps) {
     }
   };
 
-  const handleStyleSelect = async (styleKey: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (isRerendering || styleKey === currentStyle) return;
-    setCurrentStyle(styleKey);
+  const handleRerender = async (
+    newStyle: string = currentStyle,
+    newZoom: boolean = autoZoom,
+    newMood: string | null = musicMood,
+    e?: React.MouseEvent
+  ) => {
+    if (e) e.stopPropagation();
+    if (isRerendering) return;
+    setCurrentStyle(newStyle);
+    setAutoZoom(newZoom);
+    setMusicMood(newMood);
     setIsRerendering(true);
     try {
-      await api.rerenderClip(clip.id, styleKey);
+      await api.rerenderClip(clip.id, {
+        subtitleStyle: newStyle,
+        autoZoom: newZoom,
+        musicMood: newMood,
+      });
       setVideoKey((k) => k + 1);
       setIsPlaying(false);
     } catch (err) {
-      console.error("Failed to re-render clip subtitles:", err);
+      console.error("Failed to re-render clip:", err);
     } finally {
       setIsRerendering(false);
     }
@@ -312,11 +327,11 @@ function ClipCard({ clip, index, isSelected, onSelect }: ClipCardProps) {
                 className="h-full w-full object-contain"
               />
 
-              {/* Re-rendering Subtitles Loading Overlay */}
+              {/* Re-rendering Polish Loading Overlay */}
               {isRerendering && (
                 <div className="absolute inset-0 z-20 flex flex-col items-center justify-center bg-black/80 backdrop-blur-sm gap-2">
                   <RefreshCw className="size-6 animate-spin text-violet-brand" />
-                  <span className="text-[11px] font-semibold text-white">Burning {currentStyle} captions...</span>
+                  <span className="text-[11px] font-semibold text-white">Applying polish & re-rendering...</span>
                 </div>
               )}
 
@@ -359,46 +374,93 @@ function ClipCard({ clip, index, isSelected, onSelect }: ClipCardProps) {
             </div>
           )}
 
-          {/* Caption Style Pill Bar */}
+          {/* Studio Polish Controls: Captions, Auto-Zoom & Mood Audio */}
           <div
-            className="mb-3 rounded-xl border border-border/80 bg-surface-2/40 p-2"
+            className="mb-3 rounded-xl border border-border/80 bg-surface-2/40 p-2.5 space-y-2"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between gap-1 mb-1.5 px-0.5">
-              <span className="text-[10px] font-semibold uppercase tracking-wider text-muted flex items-center gap-1">
-                <Sparkles className="size-2.5 text-violet-brand" />
-                Dynamic Captions
-              </span>
-              {isRerendering && (
-                <span className="inline-flex items-center gap-1 text-[10px] text-violet-400 font-medium">
-                  <RefreshCw className="size-2.5 animate-spin" />
-                  Rendering...
+            <div>
+              <div className="flex items-center justify-between gap-1 mb-1 px-0.5">
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted flex items-center gap-1">
+                  <Sparkles className="size-2.5 text-violet-brand" />
+                  Kinetic Captions
                 </span>
-              )}
+                {isRerendering && (
+                  <span className="inline-flex items-center gap-1 text-[10px] text-violet-400 font-medium">
+                    <RefreshCw className="size-2.5 animate-spin" />
+                    Rendering...
+                  </span>
+                )}
+              </div>
+              <div className="grid grid-cols-4 gap-1">
+                {[
+                  { id: "hormozi", label: "⚡ Hormozi" },
+                  { id: "mrbeast", label: "🟢 MrBeast" },
+                  { id: "neon", label: "🟣 Cyber" },
+                  { id: "clean", label: "⚪ Clean" },
+                ].map((preset) => (
+                  <button
+                    key={preset.id}
+                    type="button"
+                    disabled={isRerendering}
+                    onClick={(e) => handleRerender(preset.id, autoZoom, musicMood, e)}
+                    className={clsx(
+                      "rounded-lg px-1.5 py-1 text-[10px] font-medium transition text-center truncate",
+                      currentStyle === preset.id
+                        ? "bg-violet-brand text-white shadow-sm font-semibold"
+                        : "bg-surface text-muted hover:text-fg hover:bg-surface-3"
+                    )}
+                    title={`Switch to ${preset.label} animated captions`}
+                  >
+                    {preset.label}
+                  </button>
+                ))}
+              </div>
             </div>
-            <div className="grid grid-cols-4 gap-1">
-              {[
-                { id: "hormozi", label: "⚡ Hormozi" },
-                { id: "mrbeast", label: "🟢 MrBeast" },
-                { id: "neon", label: "🟣 Cyber" },
-                { id: "clean", label: "⚪ Clean" },
-              ].map((preset) => (
+
+            <div className="pt-2 border-t border-border/50 grid grid-cols-2 gap-2">
+              <div>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted flex items-center gap-1 mb-1 px-0.5">
+                  <ZoomIn className="size-2.5 text-cyan-brand" />
+                  Auto-Zoom
+                </span>
                 <button
-                  key={preset.id}
                   type="button"
                   disabled={isRerendering}
-                  onClick={(e) => handleStyleSelect(preset.id, e)}
+                  onClick={(e) => handleRerender(currentStyle, !autoZoom, musicMood, e)}
                   className={clsx(
-                    "rounded-lg px-1.5 py-1 text-[10px] font-medium transition text-center truncate",
-                    currentStyle === preset.id
-                      ? "bg-violet-brand text-white shadow-sm font-semibold"
-                      : "bg-surface text-muted hover:text-fg hover:bg-surface-3"
+                    "w-full rounded-lg px-2 py-1 text-[10px] font-medium transition flex items-center justify-center gap-1.5",
+                    autoZoom
+                      ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-semibold"
+                      : "bg-surface text-muted border border-border/60 hover:text-fg"
                   )}
-                  title={`Switch to ${preset.label} animated captions`}
+                  title="Dynamic 1.08x punch-in zoom every 12s for retention"
                 >
-                  {preset.label}
+                  <span className={clsx("size-1.5 rounded-full", autoZoom ? "bg-cyan-400 animate-pulse" : "bg-muted")} />
+                  {autoZoom ? "Punch-in ON" : "Static 1.0x"}
                 </button>
-              ))}
+              </div>
+
+              <div>
+                <span className="text-[10px] font-semibold uppercase tracking-wider text-muted flex items-center gap-1 mb-1 px-0.5">
+                  <Music className="size-2.5 text-violet-brand" />
+                  Audio Bed
+                </span>
+                <select
+                  disabled={isRerendering}
+                  value={musicMood || "none"}
+                  onChange={(e) => {
+                    const val = e.target.value === "none" ? null : e.target.value;
+                    void handleRerender(currentStyle, autoZoom, val);
+                  }}
+                  className="w-full rounded-lg bg-surface border border-border/60 px-2 py-1 text-[10px] font-medium text-fg focus:outline-none focus:border-violet-brand cursor-pointer"
+                >
+                  <option value="none">Speech Only</option>
+                  <option value="chill">☕ Chill Lo-fi</option>
+                  <option value="energetic">⚡ Upbeat Beat</option>
+                  <option value="suspense">🎬 Suspense Drama</option>
+                </select>
+              </div>
             </div>
           </div>
 

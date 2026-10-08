@@ -81,5 +81,7 @@ class Clip(SQLModel, table=True):
     video_file: str | None = None
     thumbnail_file: str | None = None
     subtitle_style: str | None = Field(default="hormozi", nullable=True)
+    auto_zoom: bool | None = Field(default=True, nullable=True)
+    music_mood: str | None = Field(default=None, nullable=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

@@ -99,6 +99,8 @@ export interface Clip {
   video_file: string | null;
   thumbnail_file: string | null;
   subtitle_style?: string | null;
+  auto_zoom?: boolean | null;
+  music_mood?: string | null;
   seo: SeoPack | null;
   created_at: string;
   updated_at: string;

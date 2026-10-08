@@ -186,3 +186,41 @@ def test_render_clip_video_command_args(tmp_path, monkeypatch):
     assert "image2" in thumb_cmd
     assert str(dst_thumb.with_name("clip.tmp.jpg")) in thumb_cmd
 
+
+def test_render_clip_video_auto_zoom_and_mood(tmp_path, monkeypatch):
+    from pathlib import Path
+    from app.pipeline.render import render_clip_video
+
+    src = tmp_path / "source.mp4"
+    src.write_bytes(b"dummy")
+    dst_vid = tmp_path / "clip.mp4"
+
+    seen_cmds = []
+
+    def mock_run(cmd, cancel=None, cwd=None):
+        seen_cmds.append(cmd)
+        for arg in cmd:
+            if str(arg).endswith(".mp4"):
+                Path(arg).write_bytes(b"rendered")
+
+    monkeypatch.setattr("app.pipeline.render._run_cancellable", mock_run)
+
+    # 1. auto_zoom=True, music_mood="chill"
+    render_clip_video(src, dst_vid, 0.0, 10.0, auto_zoom=True, music_mood="chill")
+    cmd = seen_cmds[0]
+    idx_filter = cmd.index("-filter_complex")
+    fc = cmd[idx_filter + 1]
+    assert "if(between(mod(t" in fc
+    assert "amix=" in fc
+    assert "-i" in cmd
+    assert any("aevalsrc=" in str(arg) for arg in cmd)
+
+    # 2. auto_zoom=False, music_mood=None
+    render_clip_video(src, dst_vid, 0.0, 10.0, auto_zoom=False, music_mood=None)
+    cmd2 = seen_cmds[1]
+    idx_filter2 = cmd2.index("-filter_complex")
+    fc2 = cmd2[idx_filter2 + 1]
+    assert "if(between(mod(t" not in fc2
+    assert "amix=" not in fc2
+
+

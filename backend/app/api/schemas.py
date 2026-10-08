@@ -84,6 +84,8 @@ class ClipOut(BaseModel):
     video_file: str | None
     thumbnail_file: str | None = None
     subtitle_style: str | None = "hormozi"
+    auto_zoom: bool | None = True
+    music_mood: str | None = None
     seo: SeoPack | None = None
     created_at: datetime
     updated_at: datetime
@@ -93,6 +95,8 @@ class ClipOut(BaseModel):
 
 class ClipRenderRequest(BaseModel):
     subtitle_style: str = "hormozi"
+    auto_zoom: bool = True
+    music_mood: str | None = None
 
 
 class ExportRequest(BaseModel):

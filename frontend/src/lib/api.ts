@@ -62,11 +62,29 @@ export const api = {
   clipThumbnailUrl: (clipId: string) => `${BASE}/clips/${clipId}/thumbnail`,
   clipDownloadUrl: (clipId: string) => `${BASE}/clips/${clipId}/download`,
   exportProjectUrl: (projectId: string) => `${BASE}/projects/${projectId}/export`,
-  rerenderClip: (clipId: string, subtitleStyle: string = "hormozi") =>
-    request<Clip>(`/clips/${clipId}/render`, {
+  rerenderClip: (
+    clipId: string,
+    optionsOrStyle?:
+      | string
+      | {
+          subtitleStyle?: string;
+          autoZoom?: boolean;
+          musicMood?: string | null;
+        }
+  ) => {
+    const opts =
+      typeof optionsOrStyle === "string"
+        ? { subtitleStyle: optionsOrStyle }
+        : optionsOrStyle;
+    return request<Clip>(`/clips/${clipId}/render`, {
       method: "POST",
-      body: JSON.stringify({ subtitle_style: subtitleStyle }),
-    }),
+      body: JSON.stringify({
+        subtitle_style: opts?.subtitleStyle ?? "hormozi",
+        auto_zoom: opts?.autoZoom ?? true,
+        music_mood: opts?.musicMood ?? null,
+      }),
+    });
+  },
 };
 
 export function jobEventsUrl(jobId: string): string {

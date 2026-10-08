@@ -37,6 +37,13 @@ VERTICAL_BLUR_FILTER = (
 )
 
 
+MOOD_PRESETS: dict[str, str] = {
+    "chill": "0.03*sin(2*PI*110*t) + 0.02*sin(2*PI*165*t) + 0.015*sin(2*PI*220*t)",
+    "energetic": "0.03*sin(2*PI*130*t)*(0.6+0.4*sin(2*PI*2*t)) + 0.02*sin(2*PI*260*t)",
+    "suspense": "0.04*sin(2*PI*55*t) + 0.03*sin(2*PI*58.2*t) + 0.02*sin(2*PI*116*t)",
+}
+
+
 def render_clip_video(
     src: Path,
     dst: Path,
@@ -44,23 +51,58 @@ def render_clip_video(
     end_s: float,
     *,
     ass_file: Path | None = None,
+    auto_zoom: bool = True,
+    music_mood: str | None = None,
     cancel: threading.Event | None = None,
 ) -> None:
-    """Renders a single 9:16 vertical video slice from src to dst with optional ASS subtitles."""
+    """Renders a single 9:16 vertical video slice from src to dst with optional ASS subtitles, dynamic punch-in zoom, and mood audio bed."""
     tmp = dst.with_name(f"{dst.stem}.tmp{dst.suffix}")
     ffmpeg = _tool("ffmpeg")
     duration = max(1.0, end_s - start_s)
 
-    # If ASS subtitles file is provided, pipe the overlay base into the libass subtitles filter
-    if ass_file and ass_file.exists():
-        filter_complex = (
-            "[0:v]split=2[bg_in][fg_in];"
-            "[bg_in]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:2[bg];"
-            "[fg_in]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
-            f"[bg][fg]overlay=(W-w)/2:(H-h)/2[base];[base]ass={ass_file.name}[v]"
-        )
+    # 1. Foreground stream framing: dynamic punch-in zoom or standard fit
+    if auto_zoom:
+        fg_filter = "crop=w='if(between(mod(t,12),4,8), in_w*0.92, in_w)':h='if(between(mod(t,12),4,8), in_h*0.92, in_h)':x='(in_w-out_w)/2':y='(in_h-out_h)/2',scale=1080:1920:force_original_aspect_ratio=decrease"
     else:
-        filter_complex = VERTICAL_BLUR_FILTER
+        fg_filter = "scale=1080:1920:force_original_aspect_ratio=decrease"
+
+    filter_chains = [
+        "[0:v]split=2[bg_in][fg_in]",
+        "[bg_in]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:2[bg]",
+        f"[fg_in]{fg_filter}[fg]",
+    ]
+
+    # Overlay & subtitles
+    if ass_file and ass_file.exists():
+        filter_chains.append(f"[bg][fg]overlay=(W-w)/2:(H-h)/2[base];[base]ass={ass_file.name}[v]")
+    else:
+        filter_chains.append("[bg][fg]overlay=(W-w)/2:(H-h)/2[v]")
+
+    # Audio & Mood Bed
+    extra_inputs: list[str] = []
+    audio_maps: list[str] = []
+
+    if music_mood and music_mood in MOOD_PRESETS:
+        has_audio = True
+        try:
+            info = media.probe(src)
+            has_audio = info.has_audio
+        except Exception:
+            pass
+
+        extra_inputs.extend([
+            "-f", "lavfi",
+            "-i", f"aevalsrc=exprs='{MOOD_PRESETS[music_mood]}':s=44100:d={duration:.3f}",
+        ])
+        if has_audio:
+            filter_chains.append("[0:a]volume=1.0[a0];[1:a]volume=0.20[a1];[a0][a1]amix=inputs=2:duration=first[a]")
+        else:
+            filter_chains.append("[1:a]volume=0.25[a]")
+        audio_maps = ["-map", "[a]"]
+    else:
+        audio_maps = ["-map", "0:a?"]
+
+    filter_complex = ";".join(filter_chains)
 
     # Note: placing -ss before -i provides fast seek, -t provides duration
     cmd = [
@@ -70,9 +112,10 @@ def render_clip_video(
         "-ss", f"{start_s:.3f}",
         "-t", f"{duration:.3f}",
         "-i", str(src),
+        *extra_inputs,
         "-filter_complex", filter_complex,
         "-map", "[v]",
-        "-map", "0:a?",
+        *audio_maps,
         "-c:v", "libx264",
         "-preset", "veryfast",
         "-crf", "23",
@@ -205,6 +248,8 @@ class RenderStage:
                     start_s=clip.start_s,
                     end_s=clip.end_s,
                     ass_file=ass_dst if ass_dst.exists() else None,
+                    auto_zoom=clip.auto_zoom if clip.auto_zoom is not None else True,
+                    music_mood=clip.music_mood,
                     cancel=ctx.cancel_event,
                 )
 
@@ -228,6 +273,8 @@ class RenderStage:
                 video_file=f"clips/{clip.id}.mp4",
                 thumbnail_file=f"clips/{clip.id}.jpg" if thumb_dst.exists() else None,
                 subtitle_style=clip.subtitle_style or "hormozi",
+                auto_zoom=clip.auto_zoom if clip.auto_zoom is not None else True,
+                music_mood=clip.music_mood,
             )
 
             progress = (idx + 1) / total

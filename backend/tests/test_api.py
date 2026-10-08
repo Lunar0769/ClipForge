@@ -269,3 +269,57 @@ def test_export_project_zip(make_client, settings):
         assert any(n.endswith(".mp4") for n in names)
         assert any(n.endswith("thumbnail.jpg") for n in names)
         assert any(n.endswith("captions.ass") for n in names)
+
+
+def test_rerender_clip_with_polish(make_client, monkeypatch):
+    from app.models import Clip
+    from app.workspace import Workspace
+
+    client = make_client([])
+    engine = client.app.state.services.engine
+    ws: Workspace = client.app.state.services.workspace
+
+    project = client.post("/api/projects", json={"url": "https://youtu.be/a"}).json()
+    p_id = project["id"]
+    repo.update_project(engine, p_id, video_id="vid123")
+    vp = ws.video("vid123")
+    (vp.dir / "source.mp4").write_bytes(b"dummy source")
+
+    repo.replace_clips(engine, p_id, [
+        Clip(
+            id="c1",
+            project_id=p_id,
+            rank=0,
+            start_s=0.0,
+            end_s=15.0,
+            title="Clip 1",
+            hook_text="Hook",
+            hook_type="statement",
+            why_viral="Viral",
+            score=95,
+            video_file="clips/c1.mp4",
+        )
+    ])
+
+    rendered_calls = []
+
+    def mock_render(src, dst, start_s, end_s, **kwargs):
+        rendered_calls.append((src, dst, start_s, end_s, kwargs))
+        dst.write_bytes(b"rendered mp4")
+
+    monkeypatch.setattr("app.api.clips.render_clip_video", mock_render)
+
+    res = client.post("/api/clips/c1/render", json={
+        "subtitle_style": "mrbeast",
+        "auto_zoom": True,
+        "music_mood": "chill",
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["subtitle_style"] == "mrbeast"
+    assert data["auto_zoom"] is True
+    assert data["music_mood"] == "chill"
+    assert len(rendered_calls) == 1
+    assert rendered_calls[0][4]["auto_zoom"] is True
+    assert rendered_calls[0][4]["music_mood"] == "chill"
+
