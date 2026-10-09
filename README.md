@@ -114,7 +114,10 @@ Missing optional keys simply disable that feature — jobs never fail because of
 - [x] **Phase 3 — 9:16 Render Engine & SEO:** FFmpeg smart blurred background vertical cutting, thumbnails, inline & cinema player, platform copy (YT Shorts / TikTok / Reels)
 - [x] **Phase 4 — Animated Captions & Subtitle Engine:** ASS word-by-word active karaoke pop, 4 viral presets (Hormozi, MrBeast, Cyber Neon, Minimal Clean), opening hook title badges, on-demand dashboard style switching
 - [x] **Phase 5 — Batch Export & Studio Polish:** 1-click ZIP export (MP4s + subtitles + thumbnails + formatted seo.txt), synchronized studio box workbench, transcript search & copy
-- [ ] **Phase 6 — Global & Polish:** auto-zoom punch-ins, B-roll cutaways, translation, dubbing
+- [x] **Phase 6.1 — Retention Polish:** 1.08x auto-zoom punch-ins & harmonic procedural audio beds (Chill, Energetic, Suspense)
+- [x] **Phase 6.2 — Studio Timeline & Trimmer:** Dual-handle video scrubber, custom start/end trim editor, live hook text re-rendering
+- [x] **Phase 6.3 — Settings & Multi-Provider Hub:** Hot-swappable AI keys (Gemini, OpenAI, Anthropic, Ollama), live ping tests, hardware acceleration status
+- [ ] **Phase 6.4 — Advanced Polish:** B-roll visual inserts & multilingual dubbing
 
 ## 🧰 Tech stack
 
