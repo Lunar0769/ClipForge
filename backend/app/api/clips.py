@@ -8,9 +8,9 @@ from fastapi.responses import FileResponse
 
 from app import repo
 from app.api.deps import Services, get_services
-from app.api.schemas import ClipOut, ClipRenderRequest, clip_out
+from app.api.schemas import ClipOut, ClipRenderRequest, ClipUpdateRequest, clip_out
 from app.pipeline.captions import write_clip_ass_file
-from app.pipeline.render import render_clip_video
+from app.pipeline.render import extract_clip_thumbnail, render_clip_video
 from app.pipeline.transcript import Transcript
 
 router = APIRouter(tags=["clips"])
@@ -101,13 +101,50 @@ def download_clip_video(clip_id: str, svc: Services = Depends(get_services)) -> 
     )
 
 
+@router.patch("/clips/{clip_id}", response_model=ClipOut)
+def update_clip(
+    clip_id: str,
+    req: ClipUpdateRequest,
+    svc: Services = Depends(get_services),
+) -> ClipOut:
+    """Updates clip metadata or trim bounds."""
+    clip = repo.get_clip(svc.engine, clip_id)
+    if clip is None:
+        raise HTTPException(404, "Clip not found")
+
+    updates = {}
+    if req.title is not None:
+        updates["title"] = req.title.strip()
+    if req.hook_text is not None:
+        updates["hook_text"] = req.hook_text.strip()
+    if req.start_s is not None:
+        updates["start_s"] = max(0.0, req.start_s)
+    if req.end_s is not None:
+        updates["end_s"] = req.end_s
+    if "start_s" in updates or "end_s" in updates:
+        s = updates.get("start_s", clip.start_s)
+        e = updates.get("end_s", clip.end_s)
+        if e <= s:
+            raise HTTPException(422, "end_s must be greater than start_s")
+    if req.subtitle_style is not None:
+        updates["subtitle_style"] = req.subtitle_style
+    if req.auto_zoom is not None:
+        updates["auto_zoom"] = req.auto_zoom
+    if req.music_mood is not None:
+        updates["music_mood"] = req.music_mood
+
+    if updates:
+        clip = repo.update_clip(svc.engine, clip.id, **updates)
+    return clip_out(clip, _seo_data(svc, clip.id, clip.project_id))
+
+
 @router.post("/clips/{clip_id}/render", response_model=ClipOut)
 def rerender_clip(
     clip_id: str,
     req: ClipRenderRequest = ClipRenderRequest(),
     svc: Services = Depends(get_services),
 ) -> ClipOut:
-    """Re-renders a clip with a selected kinetic subtitle style."""
+    """Re-renders a clip with a selected kinetic subtitle style, optional trim, and polish settings."""
     clip = repo.get_clip(svc.engine, clip_id)
     if clip is None:
         raise HTTPException(404, "Clip not found")
@@ -120,9 +157,19 @@ def rerender_clip(
     if src is None or not src.exists():
         raise HTTPException(404, "Source video file not found")
 
+    # Determine trim boundaries and titles
+    start_s = req.start_s if req.start_s is not None else clip.start_s
+    end_s = req.end_s if req.end_s is not None else clip.end_s
+    if end_s <= start_s or start_s < 0:
+        raise HTTPException(422, "Invalid trim boundaries: end_s must be greater than start_s and start_s >= 0")
+
+    title = req.title.strip() if req.title is not None else clip.title
+    hook_text = req.hook_text.strip() if req.hook_text is not None else (clip.hook_text or clip.title)
+
     clips_dir = svc.workspace.project_dir(clip.project_id) / "clips"
     clips_dir.mkdir(parents=True, exist_ok=True)
     video_dst = clips_dir / f"{clip.id}.mp4"
+    thumb_dst = clips_dir / f"{clip.id}.jpg"
     ass_dst = clips_dir / f"{clip.id}.ass"
 
     # Load words if transcript exists
@@ -138,11 +185,11 @@ def rerender_clip(
     if words:
         write_clip_ass_file(
             words=words,
-            clip_start_s=clip.start_s,
-            clip_end_s=clip.end_s,
+            clip_start_s=start_s,
+            clip_end_s=end_s,
             dst_path=ass_dst,
             style_name=req.subtitle_style,
-            hook_text=clip.hook_text or clip.title,
+            hook_text=hook_text,
         )
 
     # Re-render video
@@ -150,19 +197,32 @@ def rerender_clip(
     render_clip_video(
         src=src,
         dst=video_dst,
-        start_s=clip.start_s,
-        end_s=clip.end_s,
+        start_s=start_s,
+        end_s=end_s,
         ass_file=ass_dst if ass_dst.exists() else None,
         auto_zoom=req.auto_zoom,
         music_mood=req.music_mood,
     )
 
+    # Refresh thumbnail
+    mid = start_s + min(1.5, (end_s - start_s) / 2)
+    try:
+        extract_clip_thumbnail(src=src, dst=thumb_dst, time_s=mid)
+    except Exception:
+        pass
+
     updated = repo.update_clip(
         svc.engine,
         clip.id,
         video_file=f"clips/{clip.id}.mp4",
+        thumbnail_file=f"clips/{clip.id}.jpg" if thumb_dst.exists() else None,
         subtitle_style=req.subtitle_style,
         auto_zoom=req.auto_zoom,
         music_mood=req.music_mood,
+        start_s=start_s,
+        end_s=end_s,
+        title=title,
+        hook_text=hook_text,
     )
     return clip_out(updated, _seo_data(svc, updated.id, updated.project_id))
+

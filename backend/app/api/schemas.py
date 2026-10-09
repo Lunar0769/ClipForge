@@ -97,6 +97,21 @@ class ClipRenderRequest(BaseModel):
     subtitle_style: str = "hormozi"
     auto_zoom: bool = True
     music_mood: str | None = None
+    start_s: float | None = None
+    end_s: float | None = None
+    title: str | None = None
+    hook_text: str | None = None
+
+
+class ClipUpdateRequest(BaseModel):
+    title: str | None = None
+    hook_text: str | None = None
+    start_s: float | None = None
+    end_s: float | None = None
+    subtitle_style: str | None = None
+    auto_zoom: bool | None = None
+    music_mood: str | None = None
+
 
 
 class ExportRequest(BaseModel):

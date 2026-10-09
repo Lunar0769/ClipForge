@@ -323,3 +323,127 @@ def test_rerender_clip_with_polish(make_client, monkeypatch):
     assert rendered_calls[0][4]["auto_zoom"] is True
     assert rendered_calls[0][4]["music_mood"] == "chill"
 
+
+def test_patch_clip_metadata_and_trim(make_client):
+    from app.models import Clip
+
+    client = make_client([])
+    engine = client.app.state.services.engine
+
+    project = client.post("/api/projects", json={"url": "https://youtu.be/a"}).json()
+    p_id = project["id"]
+
+    repo.replace_clips(engine, p_id, [
+        Clip(
+            id="c1",
+            project_id=p_id,
+            rank=0,
+            start_s=10.0,
+            end_s=40.0,
+            title="Old Title",
+            hook_text="Old Hook",
+            hook_type="statement",
+            why_viral="Viral",
+            score=90,
+        )
+    ])
+
+    # 1. Invalid bounds
+    res_bad = client.patch("/api/clips/c1", json={"start_s": 50.0, "end_s": 40.0})
+    assert res_bad.status_code == 422
+
+    # 2. Valid updates
+    res = client.patch("/api/clips/c1", json={
+        "title": "New Edited Title",
+        "hook_text": "Is this working?",
+        "start_s": 12.5,
+        "end_s": 35.0,
+        "subtitle_style": "neon",
+        "auto_zoom": False,
+        "music_mood": "energetic",
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["title"] == "New Edited Title"
+    assert data["hook_text"] == "Is this working?"
+    assert data["start_s"] == 12.5
+    assert data["end_s"] == 35.0
+    assert data["subtitle_style"] == "neon"
+    assert data["auto_zoom"] is False
+    assert data["music_mood"] == "energetic"
+
+
+def test_rerender_clip_with_custom_trim(make_client, monkeypatch):
+    from app.models import Clip
+    from app.workspace import Workspace
+
+    client = make_client([])
+    engine = client.app.state.services.engine
+    ws: Workspace = client.app.state.services.workspace
+
+    project = client.post("/api/projects", json={"url": "https://youtu.be/a"}).json()
+    p_id = project["id"]
+    repo.update_project(engine, p_id, video_id="vid456")
+    vp = ws.video("vid456")
+    (vp.dir / "source.mp4").write_bytes(b"dummy source")
+
+    repo.replace_clips(engine, p_id, [
+        Clip(
+            id="c1",
+            project_id=p_id,
+            rank=0,
+            start_s=0.0,
+            end_s=30.0,
+            title="Clip 1",
+            hook_text="Hook 1",
+            hook_type="statement",
+            why_viral="Viral",
+            score=95,
+            video_file="clips/c1.mp4",
+        )
+    ])
+
+    rendered_slices = []
+
+    def mock_render(src, dst, start_s, end_s, **kwargs):
+        rendered_slices.append((start_s, end_s))
+        dst.write_bytes(b"rendered mp4")
+
+    monkeypatch.setattr("app.api.clips.render_clip_video", mock_render)
+    monkeypatch.setattr("app.api.clips.extract_clip_thumbnail", lambda **kw: None)
+
+    res = client.post("/api/clips/c1/render", json={
+        "start_s": 5.0,
+        "end_s": 22.5,
+        "title": "Custom Trimmed Short",
+        "hook_text": "Custom Hook",
+        "subtitle_style": "clean",
+    })
+    assert res.status_code == 200
+    data = res.json()
+    assert data["start_s"] == 5.0
+    assert data["end_s"] == 22.5
+    assert data["title"] == "Custom Trimmed Short"
+    assert data["hook_text"] == "Custom Hook"
+    assert rendered_slices == [(5.0, 22.5)]
+
+
+def test_stream_source_video(make_client):
+    from app.workspace import Workspace
+
+    client = make_client([])
+    engine = client.app.state.services.engine
+    ws: Workspace = client.app.state.services.workspace
+
+    project = client.post("/api/projects", json={"url": "https://youtu.be/a"}).json()
+    p_id = project["id"]
+    repo.update_project(engine, p_id, video_id="vidsource")
+    vp = ws.video("vidsource")
+    (vp.dir / "source.mp4").write_bytes(b"dummy source video stream")
+
+    res = client.get(f"/api/projects/{p_id}/source")
+    assert res.status_code == 200
+    assert res.headers["content-type"] == "video/mp4"
+    assert res.content == b"dummy source video stream"
+
+

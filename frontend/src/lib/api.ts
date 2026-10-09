@@ -61,7 +61,24 @@ export const api = {
   clipVideoUrl: (clipId: string) => `${BASE}/clips/${clipId}/video`,
   clipThumbnailUrl: (clipId: string) => `${BASE}/clips/${clipId}/thumbnail`,
   clipDownloadUrl: (clipId: string) => `${BASE}/clips/${clipId}/download`,
+  projectSourceUrl: (projectId: string) => `${BASE}/projects/${projectId}/source`,
   exportProjectUrl: (projectId: string) => `${BASE}/projects/${projectId}/export`,
+  updateClip: (
+    clipId: string,
+    updates: {
+      title?: string;
+      hook_text?: string;
+      start_s?: number;
+      end_s?: number;
+      subtitle_style?: string;
+      auto_zoom?: boolean;
+      music_mood?: string | null;
+    }
+  ) =>
+    request<Clip>(`/clips/${clipId}`, {
+      method: "PATCH",
+      body: JSON.stringify(updates),
+    }),
   rerenderClip: (
     clipId: string,
     optionsOrStyle?:
@@ -70,6 +87,10 @@ export const api = {
           subtitleStyle?: string;
           autoZoom?: boolean;
           musicMood?: string | null;
+          startS?: number;
+          endS?: number;
+          title?: string;
+          hookText?: string;
         }
   ) => {
     const opts =
@@ -82,6 +103,10 @@ export const api = {
         subtitle_style: opts?.subtitleStyle ?? "hormozi",
         auto_zoom: opts?.autoZoom ?? true,
         music_mood: opts?.musicMood ?? null,
+        start_s: opts?.startS,
+        end_s: opts?.endS,
+        title: opts?.title,
+        hook_text: opts?.hookText,
       }),
     });
   },

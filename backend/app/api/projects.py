@@ -102,6 +102,17 @@ def get_transcript(project_id: str, svc: Services = Depends(get_services)) -> Tr
     return Transcript.model_validate(read_json(svc.workspace.video(project.video_id).transcript))
 
 
+@router.get("/projects/{project_id}/source")
+def stream_source_video(project_id: str, svc: Services = Depends(get_services)) -> FileResponse:
+    project = _get_project_or_404(svc, project_id)
+    if project.video_id is None:
+        raise HTTPException(404, "Source video not found")
+    src = svc.workspace.video(project.video_id).find_source()
+    if src is None or not src.exists():
+        raise HTTPException(404, "Source video file missing")
+    return FileResponse(path=src, media_type="video/mp4", filename=f"{project.id}_source.mp4")
+
+
 @router.post("/projects/{project_id}/retry", response_model=ProjectOut)
 def retry_project(project_id: str, svc: Services = Depends(get_services)) -> ProjectOut:
     project = _get_project_or_404(svc, project_id)

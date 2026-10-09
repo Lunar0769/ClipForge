@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "motion/react";
 import { useState, useRef, useMemo } from "react";
 import {
@@ -18,12 +18,14 @@ import {
   RefreshCw,
   ZoomIn,
   Music,
+  Scissors,
 } from "lucide-react";
 import clsx from "clsx";
 import type { Clip, SeoPack, SubScores } from "../../lib/types";
 import { api } from "../../lib/api";
 import { Skeleton } from "../../components/Skeleton";
 import type { Project } from "../../lib/types";
+import { ClipEditorModal } from "./ClipEditorModal";
 
 function YouTubeIcon({ className }: { className?: string }) {
   return (
@@ -215,15 +217,18 @@ function SeoSection({ seo }: { seo: SeoPack }) {
 
 interface ClipCardProps {
   clip: Clip;
+  project: Project;
   index: number;
   isSelected?: boolean;
   onSelect?: () => void;
 }
 
-function ClipCard({ clip, index, isSelected, onSelect }: ClipCardProps) {
+function ClipCard({ clip, project, index, isSelected, onSelect }: ClipCardProps) {
+  const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
+  const [showEditor, setShowEditor] = useState(false);
   const [currentStyle, setCurrentStyle] = useState(clip.subtitle_style || "hormozi");
   const [autoZoom, setAutoZoom] = useState(clip.auto_zoom !== false);
   const [musicMood, setMusicMood] = useState<string | null>(clip.music_mood || null);
@@ -514,16 +519,30 @@ function ClipCard({ clip, index, isSelected, onSelect }: ClipCardProps) {
 
           <div className="flex items-center gap-2">
             {hasVideo && (
-              <a
-                href={downloadUrl}
-                download
-                onClick={(e) => e.stopPropagation()}
-                className="inline-flex items-center gap-1 rounded-full bg-violet-brand/15 px-2.5 py-1 text-[11px] font-medium text-violet-300 transition hover:bg-violet-brand hover:text-white"
-                title="Download 9:16 Short MP4"
-              >
-                <Download className="size-3" />
-                <span>Download</span>
-              </a>
+              <>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowEditor(true);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-full bg-cyan-500/15 px-2.5 py-1 text-[11px] font-medium text-cyan-300 transition hover:bg-cyan-500 hover:text-white"
+                  title="Trim timeline, tune hook card, and polish clip"
+                >
+                  <Scissors className="size-3" />
+                  <span>Trim</span>
+                </button>
+                <a
+                  href={downloadUrl}
+                  download
+                  onClick={(e) => e.stopPropagation()}
+                  className="inline-flex items-center gap-1 rounded-full bg-violet-brand/15 px-2.5 py-1 text-[11px] font-medium text-violet-300 transition hover:bg-violet-brand hover:text-white"
+                  title="Download 9:16 Short MP4"
+                >
+                  <Download className="size-3" />
+                  <span>Download</span>
+                </a>
+              </>
             )}
             <span className="text-[11px] text-muted group-hover:text-violet-400 font-medium">
               {isSelected ? "Active" : "Focus →"}
@@ -610,6 +629,18 @@ function ClipCard({ clip, index, isSelected, onSelect }: ClipCardProps) {
           </div>
         )}
       </AnimatePresence>
+
+      {/* Studio Timeline & Trim Editor Modal */}
+      <ClipEditorModal
+        clip={clip}
+        project={project}
+        isOpen={showEditor}
+        onClose={() => setShowEditor(false)}
+        onClipUpdated={() => {
+          setVideoKey((k) => k + 1);
+          void queryClient.invalidateQueries({ queryKey: ["clips", project.id] });
+        }}
+      />
     </>
   );
 }
@@ -741,6 +772,7 @@ export default function GalleryView({
           <ClipCard
             key={clip.id}
             clip={clip}
+            project={project}
             index={i}
             isSelected={activeClipId === clip.id}
             onSelect={() => onSelectClip?.(clip)}
