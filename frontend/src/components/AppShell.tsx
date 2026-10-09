@@ -1,14 +1,16 @@
-import { Moon, Sun } from "lucide-react";
+import { Moon, Settings, Sun } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
 import { applyTheme, getStoredTheme, type Theme } from "../lib/theme";
 import { useSmoothScroll } from "../lib/useSmoothScroll";
 import { Grain } from "./Grain";
 import { Logo } from "./Logo";
+import { SettingsModal } from "./SettingsModal";
 
 export function AppShell({ children }: { children: ReactNode }) {
   useSmoothScroll();
   const [theme, setTheme] = useState<Theme>(getStoredTheme);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const next: Theme = theme === "dark" ? "light" : "dark";
 
   return (
@@ -28,6 +30,14 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
             <button
               type="button"
+              aria-label="Studio settings"
+              onClick={() => setSettingsOpen(true)}
+              className="grid size-9 place-items-center rounded-full text-muted transition hover:bg-surface-2 hover:text-fg"
+            >
+              <Settings className="size-4" />
+            </button>
+            <button
+              type="button"
               aria-label={`Switch to ${next} theme`}
               onClick={() => {
                 applyTheme(next);
@@ -41,6 +51,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </div>
       </header>
       <main>{children}</main>
+      <SettingsModal isOpen={settingsOpen} onClose={() => setSettingsOpen(false)} />
     </div>
   );
 }

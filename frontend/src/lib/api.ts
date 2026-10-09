@@ -1,4 +1,4 @@
-import type { Clip, Job, Project, StageInfo, SystemInfo, Transcript } from "./types";
+import type { AppSettings, Clip, Job, Project, StageInfo, SystemInfo, Transcript } from "./types";
 
 const BASE = "/api";
 
@@ -110,6 +110,30 @@ export const api = {
       }),
     });
   },
+  getSettings: () => request<AppSettings>("/settings"),
+  updateSettings: (updates: {
+    provider?: string | null;
+    gemini_api_key?: string | null;
+    openai_api_key?: string | null;
+    anthropic_api_key?: string | null;
+    ollama_host?: string | null;
+    default_subtitle_style?: string | null;
+    default_auto_zoom?: boolean | null;
+    default_music_mood?: string | null;
+  }) =>
+    request<AppSettings>("/settings", {
+      method: "PUT",
+      body: JSON.stringify(updates),
+    }),
+  testProvider: (payload: {
+    provider: string;
+    api_key?: string | null;
+    ollama_host?: string | null;
+  }) =>
+    request<{ ok: boolean; message: string; model?: string | null }>("/settings/test", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
 };
 
 export function jobEventsUrl(jobId: string): string {

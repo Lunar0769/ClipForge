@@ -447,3 +447,49 @@ def test_stream_source_video(make_client):
     assert res.content == b"dummy source video stream"
 
 
+def test_settings_endpoints(make_client, monkeypatch):
+    client = make_client([])
+
+    # 1. GET initial settings
+    res = client.get("/api/settings")
+    assert res.status_code == 200
+    data = res.json()
+    assert "default_subtitle_style" in data
+    assert "gemini_key_set" in data
+
+    # 2. PUT updated settings
+    res = client.put("/api/settings", json={
+        "provider": "openai",
+        "openai_api_key": "sk-test-fake-key",
+        "default_subtitle_style": "cyber",
+        "default_auto_zoom": False,
+        "default_music_mood": "chill",
+    })
+    assert res.status_code == 200
+    updated = res.json()
+    assert updated["provider"] == "openai"
+    assert updated["openai_key_set"] is True
+    assert updated["default_subtitle_style"] == "cyber"
+    assert updated["default_auto_zoom"] is False
+    assert updated["default_music_mood"] == "chill"
+
+    # 3. GET reflects stored changes
+    refreshed = client.get("/api/settings").json()
+    assert refreshed["provider"] == "openai"
+    assert refreshed["openai_key_set"] is True
+    assert refreshed["default_subtitle_style"] == "cyber"
+
+    # 4. POST test ping with mocked httpx
+    class FakeResponse:
+        status_code = 200
+        def json(self):
+            return {"models": [{"name": "llama3.2:latest"}]}
+
+    monkeypatch.setattr("httpx.get", lambda url, **kwargs: FakeResponse())
+    res_test = client.post("/api/settings/test", json={"provider": "ollama"})
+    assert res_test.status_code == 200
+    test_data = res_test.json()
+    assert test_data["ok"] is True
+    assert "llama3.2" in test_data["message"]
+
+

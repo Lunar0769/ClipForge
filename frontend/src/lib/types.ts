@@ -63,6 +63,17 @@ export interface SystemInfo {
   nvenc: boolean;
 }
 
+export interface AppSettings {
+  provider: string | null;
+  gemini_key_set: boolean;
+  openai_key_set: boolean;
+  anthropic_key_set: boolean;
+  ollama_host: string | null;
+  default_subtitle_style: string;
+  default_auto_zoom: boolean;
+  default_music_mood: string | null;
+}
+
 export interface SeoPack {
   youtube_caption: string;
   tiktok_caption: string;
