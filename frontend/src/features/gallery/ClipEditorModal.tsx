@@ -13,6 +13,7 @@ import {
   Clock,
   Check,
   AlertCircle,
+  Film,
 } from "lucide-react";
 import clsx from "clsx";
 import type { Clip, Project } from "../../lib/types";
@@ -47,6 +48,7 @@ export function ClipEditorModal({
   const [subtitleStyle, setSubtitleStyle] = useState(clip.subtitle_style || "hormozi");
   const [autoZoom, setAutoZoom] = useState(clip.auto_zoom !== false);
   const [musicMood, setMusicMood] = useState<string | null>(clip.music_mood || null);
+  const [brollEnabled, setBrollEnabled] = useState(clip.broll_enabled === true);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
@@ -65,6 +67,7 @@ export function ClipEditorModal({
     setSubtitleStyle(clip.subtitle_style || "hormozi");
     setAutoZoom(clip.auto_zoom !== false);
     setMusicMood(clip.music_mood || null);
+    setBrollEnabled(clip.broll_enabled === true);
     setErrorMsg(null);
   }, [clip]);
 
@@ -137,6 +140,7 @@ export function ClipEditorModal({
         subtitleStyle,
         autoZoom,
         musicMood,
+        brollEnabled,
         startS,
         endS,
         title,
@@ -413,8 +417,8 @@ export function ClipEditorModal({
                   </div>
                 </div>
 
-                {/* Auto-Zoom & Mood Audio */}
-                <div className="pt-2 border-t border-border/60 grid grid-cols-2 gap-3">
+                {/* Auto-Zoom, Audio Bed & B-Roll Cutaways */}
+                <div className="pt-2 border-t border-border/60 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
                   <div>
                     <span className="text-xs font-semibold uppercase tracking-wider text-muted flex items-center gap-1 mb-1.5">
                       <ZoomIn className="size-3 text-cyan-brand" />
@@ -425,7 +429,7 @@ export function ClipEditorModal({
                       disabled={isRendering}
                       onClick={() => setAutoZoom(!autoZoom)}
                       className={clsx(
-                        "w-full rounded-xl px-3 py-1.5 text-xs font-medium transition flex items-center justify-center gap-2",
+                        "w-full rounded-xl px-2.5 py-1.5 text-xs font-medium transition flex items-center justify-center gap-1.5",
                         autoZoom
                           ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-semibold"
                           : "bg-surface text-muted border border-border hover:text-fg"
@@ -438,6 +442,27 @@ export function ClipEditorModal({
 
                   <div>
                     <span className="text-xs font-semibold uppercase tracking-wider text-muted flex items-center gap-1 mb-1.5">
+                      <Film className="size-3 text-emerald-400" />
+                      <span>AI B-Roll</span>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isRendering}
+                      onClick={() => setBrollEnabled(!brollEnabled)}
+                      className={clsx(
+                        "w-full rounded-xl px-2.5 py-1.5 text-xs font-medium transition flex items-center justify-center gap-1.5",
+                        brollEnabled
+                          ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold"
+                          : "bg-surface text-muted border border-border hover:text-fg"
+                      )}
+                    >
+                      <span className={clsx("size-1.5 rounded-full", brollEnabled ? "bg-emerald-400 animate-pulse" : "bg-muted")} />
+                      {brollEnabled ? "Cutaways ON" : "No B-Roll"}
+                    </button>
+                  </div>
+
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted flex items-center gap-1 mb-1.5">
                       <Music className="size-3 text-violet-brand" />
                       <span>Audio Bed</span>
                     </span>
@@ -445,7 +470,7 @@ export function ClipEditorModal({
                       disabled={isRendering}
                       value={musicMood || "none"}
                       onChange={(e) => setMusicMood(e.target.value === "none" ? null : e.target.value)}
-                      className="w-full rounded-xl bg-surface border border-border px-3 py-1.5 text-xs font-medium text-fg focus:outline-none focus:border-violet-brand cursor-pointer"
+                      className="w-full rounded-xl bg-surface border border-border px-2.5 py-1.5 text-xs font-medium text-fg focus:outline-none focus:border-violet-brand cursor-pointer"
                     >
                       <option value="none">Speech Only</option>
                       <option value="chill">☕ Chill Lo-fi</option>
@@ -454,6 +479,18 @@ export function ClipEditorModal({
                     </select>
                   </div>
                 </div>
+
+                {/* B-Roll Cues preview badge */}
+                {brollEnabled && clip.broll_cues && clip.broll_cues.length > 0 && (
+                  <div className="pt-2 flex flex-wrap items-center gap-1.5 text-[11px] text-muted">
+                    <span className="font-semibold text-emerald-400">🎬 Detected Visual Moments:</span>
+                    {clip.broll_cues.map((cue, idx) => (
+                      <span key={idx} className="rounded-lg bg-surface px-2 py-0.5 border border-border/70 text-fg font-mono">
+                        "{cue.keyword}" ({cue.start_s.toFixed(1)}s–{cue.end_s.toFixed(1)}s)
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Error / Success Feedback */}

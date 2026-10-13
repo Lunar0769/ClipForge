@@ -18,10 +18,12 @@ class SettingsOut(BaseModel):
     gemini_key_set: bool = False
     openai_key_set: bool = False
     anthropic_key_set: bool = False
+    pexels_key_set: bool = False
     ollama_host: str | None = None
     default_subtitle_style: str = "hormozi"
     default_auto_zoom: bool = True
     default_music_mood: str | None = None
+    default_broll: bool = False
 
 
 class SettingsUpdate(BaseModel):
@@ -29,10 +31,12 @@ class SettingsUpdate(BaseModel):
     gemini_api_key: str | None = None
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
+    pexels_api_key: str | None = None
     ollama_host: str | None = None
     default_subtitle_style: str | None = None
     default_auto_zoom: bool | None = None
     default_music_mood: str | None = None
+    default_broll: bool | None = None
 
 
 class ProviderTestRequest(BaseModel):
@@ -59,6 +63,7 @@ def get_settings(svc: Services = Depends(get_services)) -> SettingsOut:
     gemini_key = stored.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY")
     openai_key = stored.get("openai_api_key") or os.environ.get("OPENAI_API_KEY")
     anthropic_key = stored.get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY")
+    pexels_key = stored.get("pexels_api_key") or os.environ.get("PEXELS_API_KEY")
     ollama_host = stored.get("ollama_host") or os.environ.get("OLLAMA_HOST")
 
     return SettingsOut(
@@ -66,10 +71,12 @@ def get_settings(svc: Services = Depends(get_services)) -> SettingsOut:
         gemini_key_set=bool(gemini_key),
         openai_key_set=bool(openai_key),
         anthropic_key_set=bool(anthropic_key),
+        pexels_key_set=bool(pexels_key),
         ollama_host=ollama_host,
         default_subtitle_style=stored.get("default_subtitle_style", "hormozi"),
         default_auto_zoom=stored.get("default_auto_zoom", True),
         default_music_mood=stored.get("default_music_mood"),
+        default_broll=stored.get("default_broll", False),
     )
 
 
@@ -107,6 +114,15 @@ def update_settings(req: SettingsUpdate, svc: Services = Depends(get_services)) 
             stored.pop("anthropic_api_key", None)
             os.environ.pop("ANTHROPIC_API_KEY", None)
 
+    if req.pexels_api_key is not None:
+        key = req.pexels_api_key.strip()
+        if key:
+            stored["pexels_api_key"] = key
+            os.environ["PEXELS_API_KEY"] = key
+        else:
+            stored.pop("pexels_api_key", None)
+            os.environ.pop("PEXELS_API_KEY", None)
+
     if req.ollama_host is not None:
         host = req.ollama_host.strip()
         if host:
@@ -122,6 +138,8 @@ def update_settings(req: SettingsUpdate, svc: Services = Depends(get_services)) 
         stored["default_auto_zoom"] = req.default_auto_zoom
     if req.default_music_mood is not None:
         stored["default_music_mood"] = req.default_music_mood
+    if req.default_broll is not None:
+        stored["default_broll"] = req.default_broll
 
     repo.put_setting(svc.engine, "app", stored)
     return get_settings(svc)
@@ -199,5 +217,18 @@ def test_provider(req: ProviderTestRequest, svc: Services = Depends(get_services
             return ProviderTestResponse(ok=False, message=f"Ollama returned HTTP {resp.status_code}")
         except Exception as e:
             return ProviderTestResponse(ok=False, message=f"Could not reach Ollama at {host}: {e}")
+
+    elif provider == "pexels":
+        key = req.api_key or stored.get("pexels_api_key") or os.environ.get("PEXELS_API_KEY")
+        if not key:
+            raise HTTPException(400, "Pexels API key is required")
+        import httpx
+        try:
+            resp = httpx.get("https://api.pexels.com/v1/curated?per_page=1", headers={"Authorization": key}, timeout=10)
+            if resp.status_code == 200:
+                return ProviderTestResponse(ok=True, message="Connected successfully to Pexels Video & Stock API!")
+            return ProviderTestResponse(ok=False, message=f"Pexels returned HTTP {resp.status_code}")
+        except Exception as e:
+            return ProviderTestResponse(ok=False, message=f"Pexels connection error: {e}")
 
     raise HTTPException(400, f"Unsupported provider: {provider}")

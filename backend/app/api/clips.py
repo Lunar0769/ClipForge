@@ -132,6 +132,8 @@ def update_clip(
         updates["auto_zoom"] = req.auto_zoom
     if req.music_mood is not None:
         updates["music_mood"] = req.music_mood
+    if req.broll_enabled is not None:
+        updates["broll_enabled"] = req.broll_enabled
 
     if updates:
         clip = repo.update_clip(svc.engine, clip.id, **updates)
@@ -192,6 +194,22 @@ def rerender_clip(
             hook_text=hook_text,
         )
 
+    # Prepare B-roll cues if broll_enabled
+    active_broll_cues = []
+    if req.broll_enabled:
+        try:
+            from app.pipeline.broll import ensure_broll_media, extract_broll_cues
+            cues = extract_broll_cues(start_s, end_s, words=words, keywords=clip.keywords)
+            broll_cache = svc.workspace.project_dir(clip.project_id) / "broll"
+            for cue in cues:
+                try:
+                    ensure_broll_media(cue, broll_cache)
+                    active_broll_cues.append(cue)
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     # Re-render video
     video_dst.unlink(missing_ok=True)
     render_clip_video(
@@ -202,6 +220,7 @@ def rerender_clip(
         ass_file=ass_dst if ass_dst.exists() else None,
         auto_zoom=req.auto_zoom,
         music_mood=req.music_mood,
+        broll_cues=active_broll_cues,
     )
 
     # Refresh thumbnail
@@ -219,6 +238,8 @@ def rerender_clip(
         subtitle_style=req.subtitle_style,
         auto_zoom=req.auto_zoom,
         music_mood=req.music_mood,
+        broll_enabled=req.broll_enabled,
+        broll_cues=[c.model_dump() for c in active_broll_cues] if active_broll_cues else clip.broll_cues,
         start_s=start_s,
         end_s=end_s,
         title=title,

@@ -83,5 +83,7 @@ class Clip(SQLModel, table=True):
     subtitle_style: str | None = Field(default="hormozi", nullable=True)
     auto_zoom: bool | None = Field(default=True, nullable=True)
     music_mood: str | None = Field(default=None, nullable=True)
+    broll_enabled: bool | None = Field(default=False, nullable=True)
+    broll_cues: list[dict[str, Any]] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

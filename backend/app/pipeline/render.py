@@ -13,6 +13,7 @@ import os
 import shutil
 import threading
 from pathlib import Path
+from typing import Any
 
 from app import media, repo
 from app.media import _run_cancellable, _tool
@@ -53,9 +54,10 @@ def render_clip_video(
     ass_file: Path | None = None,
     auto_zoom: bool = True,
     music_mood: str | None = None,
+    broll_cues: list[Any] | None = None,
     cancel: threading.Event | None = None,
 ) -> None:
-    """Renders a single 9:16 vertical video slice from src to dst with optional ASS subtitles, dynamic punch-in zoom, and mood audio bed."""
+    """Renders a single 9:16 vertical video slice from src to dst with optional ASS subtitles, dynamic punch-in zoom, mood audio bed, and B-roll cutaways."""
     tmp = dst.with_name(f"{dst.stem}.tmp{dst.suffix}")
     ffmpeg = _tool("ffmpeg")
     duration = max(1.0, end_s - start_s)
@@ -70,19 +72,51 @@ def render_clip_video(
         "[0:v]split=2[bg_in][fg_in]",
         "[bg_in]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:2[bg]",
         f"[fg_in]{fg_filter}[fg]",
+        "[bg][fg]overlay=(W-w)/2:(H-h)/2[base_comp_0]",
     ]
 
-    # Overlay & subtitles
-    if ass_file and ass_file.exists():
-        filter_chains.append(f"[bg][fg]overlay=(W-w)/2:(H-h)/2[base];[base]ass={ass_file.name}[v]")
-    else:
-        filter_chains.append("[bg][fg]overlay=(W-w)/2:(H-h)/2[v]")
+    extra_inputs: list[str] = []
+    input_count = 1
 
     # Audio & Mood Bed
-    extra_inputs: list[str] = []
-    audio_maps: list[str] = []
-
+    music_input_idx = None
     if music_mood and music_mood in MOOD_PRESETS:
+        extra_inputs.extend([
+            "-f", "lavfi",
+            "-i", f"aevalsrc=exprs='{MOOD_PRESETS[music_mood]}':s=44100:d={duration:.3f}",
+        ])
+        music_input_idx = input_count
+        input_count += 1
+
+    # B-roll Video Inputs
+    valid_brolls: list[tuple[int, float, float]] = []
+    if broll_cues:
+        for cue in broll_cues:
+            cue_path = getattr(cue, "video_path", None) or (cue.get("video_path") if isinstance(cue, dict) else None)
+            cue_start = getattr(cue, "start_s", 0.0) if not isinstance(cue, dict) else cue.get("start_s", 0.0)
+            cue_end = getattr(cue, "end_s", 0.0) if not isinstance(cue, dict) else cue.get("end_s", 0.0)
+            if cue_path and Path(cue_path).exists():
+                extra_inputs.extend(["-stream_loop", "-1", "-i", str(Path(cue_path).resolve())])
+                valid_brolls.append((input_count, float(cue_start), float(cue_end)))
+                input_count += 1
+
+    # Composite B-roll overlays
+    curr_comp = "base_comp_0"
+    for i, (b_idx, c_start, c_end) in enumerate(valid_brolls):
+        filter_chains.append(f"[{b_idx}:v]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[broll_{i}]")
+        next_comp = f"base_comp_{i+1}"
+        filter_chains.append(f"[{curr_comp}][broll_{i}]overlay=x=0:y=0:enable='between(t,{c_start:.2f},{c_end:.2f})'[{next_comp}]")
+        curr_comp = next_comp
+
+    # Subtitles on top of all visual layers
+    if ass_file and ass_file.exists():
+        filter_chains.append(f"[{curr_comp}]ass={ass_file.name}[v]")
+    else:
+        filter_chains.append(f"[{curr_comp}]null[v]")
+
+    # Audio & Mood Bed mapping
+    audio_maps: list[str] = []
+    if music_input_idx is not None:
         has_audio = True
         try:
             info = media.probe(src)
@@ -90,14 +124,10 @@ def render_clip_video(
         except Exception:
             pass
 
-        extra_inputs.extend([
-            "-f", "lavfi",
-            "-i", f"aevalsrc=exprs='{MOOD_PRESETS[music_mood]}':s=44100:d={duration:.3f}",
-        ])
         if has_audio:
-            filter_chains.append("[0:a]volume=1.0[a0];[1:a]volume=0.20[a1];[a0][a1]amix=inputs=2:duration=first[a]")
+            filter_chains.append(f"[0:a]volume=1.0[a0];[{music_input_idx}:a]volume=0.20[a1];[a0][a1]amix=inputs=2:duration=first[a]")
         else:
-            filter_chains.append("[1:a]volume=0.25[a]")
+            filter_chains.append(f"[{music_input_idx}:a]volume=0.25[a]")
         audio_maps = ["-map", "[a]"]
     else:
         audio_maps = ["-map", "0:a?"]
@@ -235,7 +265,23 @@ class RenderStage:
                 except Exception as exc:
                     logger.warning("Failed to generate ASS subtitles for clip %s: %s", clip.id, exc)
 
-            # 2. Video render
+            # 2. B-roll cutaway preparation if enabled
+            active_broll_cues = []
+            if clip.broll_enabled:
+                try:
+                    from app.pipeline.broll import ensure_broll_media, extract_broll_cues
+                    cues = extract_broll_cues(clip.start_s, clip.end_s, words=words, keywords=clip.keywords)
+                    cache_dir = ctx.workspace.project_dir(ctx.project_id) / "broll"
+                    for cue in cues:
+                        try:
+                            ensure_broll_media(cue, cache_dir, cancel=ctx.cancel_event)
+                            active_broll_cues.append(cue)
+                        except Exception as cue_err:
+                            logger.warning("B-roll generation failed for %s: %s", cue.keyword, cue_err)
+                except Exception as broll_err:
+                    logger.warning("Failed to prepare B-roll cues for clip %s: %s", clip.id, broll_err)
+
+            # 3. Video render
             if not video_dst.exists():
                 ctx.emit(
                     "log",
@@ -250,10 +296,11 @@ class RenderStage:
                     ass_file=ass_dst if ass_dst.exists() else None,
                     auto_zoom=clip.auto_zoom if clip.auto_zoom is not None else True,
                     music_mood=clip.music_mood,
+                    broll_cues=active_broll_cues,
                     cancel=ctx.cancel_event,
                 )
 
-            # 3. Thumbnail extraction (pick a frame 1.5s in or at midpoint)
+            # 4. Thumbnail extraction (pick a frame 1.5s in or at midpoint)
             if not thumb_dst.exists():
                 mid = clip.start_s + min(1.5, (clip.end_s - clip.start_s) / 2)
                 try:
@@ -266,7 +313,7 @@ class RenderStage:
                 except Exception as exc:
                     logger.warning("Thumbnail extraction failed for clip %s: %s", clip.id, exc)
 
-            # 4. Update database record
+            # 5. Update database record
             repo.update_clip(
                 ctx.engine,
                 clip.id,
@@ -275,6 +322,8 @@ class RenderStage:
                 subtitle_style=clip.subtitle_style or "hormozi",
                 auto_zoom=clip.auto_zoom if clip.auto_zoom is not None else True,
                 music_mood=clip.music_mood,
+                broll_enabled=clip.broll_enabled,
+                broll_cues=[c.model_dump() for c in active_broll_cues] if active_broll_cues else clip.broll_cues,
             )
 
             progress = (idx + 1) / total

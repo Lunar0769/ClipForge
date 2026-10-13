@@ -117,7 +117,8 @@ Missing optional keys simply disable that feature — jobs never fail because of
 - [x] **Phase 6.1 — Retention Polish:** 1.08x auto-zoom punch-ins & harmonic procedural audio beds (Chill, Energetic, Suspense)
 - [x] **Phase 6.2 — Studio Timeline & Trimmer:** Dual-handle video scrubber, custom start/end trim editor, live hook text re-rendering
 - [x] **Phase 6.3 — Settings & Multi-Provider Hub:** Hot-swappable AI keys (Gemini, OpenAI, Anthropic, Ollama), live ping tests, hardware acceleration status
-- [ ] **Phase 6.4 — Advanced Polish:** B-roll visual inserts & multilingual dubbing
+- [x] **Phase 6.4 — AI B-Roll & Visual Cutaways:** Contextual keyword cue detection, Pexels API integration, procedural motion sweeps fallback, composited beneath subtitles
+- [ ] **Phase 6.5 — Multilingual Dubbing & Audio Polish:** Edge-TTS neural speech synthesis & filler silence trimming
 
 ## 🧰 Tech stack
 

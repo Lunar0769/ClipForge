@@ -86,6 +86,8 @@ class ClipOut(BaseModel):
     subtitle_style: str | None = "hormozi"
     auto_zoom: bool | None = True
     music_mood: str | None = None
+    broll_enabled: bool | None = False
+    broll_cues: list[dict[str, Any]] | None = None
     seo: SeoPack | None = None
     created_at: datetime
     updated_at: datetime
@@ -97,6 +99,7 @@ class ClipRenderRequest(BaseModel):
     subtitle_style: str = "hormozi"
     auto_zoom: bool = True
     music_mood: str | None = None
+    broll_enabled: bool = False
     start_s: float | None = None
     end_s: float | None = None
     title: str | None = None
@@ -111,6 +114,7 @@ class ClipUpdateRequest(BaseModel):
     subtitle_style: str | None = None
     auto_zoom: bool | None = None
     music_mood: str | None = None
+    broll_enabled: bool | None = None
 
 
 

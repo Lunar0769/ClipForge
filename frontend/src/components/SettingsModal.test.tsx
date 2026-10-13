@@ -21,10 +21,12 @@ describe("SettingsModal", () => {
       gemini_key_set: true,
       openai_key_set: false,
       anthropic_key_set: false,
+      pexels_key_set: false,
       ollama_host: "http://localhost:11434",
       default_subtitle_style: "hormozi",
       default_auto_zoom: true,
       default_music_mood: null,
+      default_broll: false,
     });
     vi.mocked(api.system).mockResolvedValue({
       gpus: [{ name: "NVIDIA GeForce RTX 4070", memory_total_mb: 12288, driver: "551.86" }],

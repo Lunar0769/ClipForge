@@ -6,6 +6,7 @@ import {
   Cpu,
   Eye,
   EyeOff,
+  Film,
   Flame,
   Layers,
   Loader2,
@@ -40,15 +41,18 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [geminiKey, setGeminiKey] = useState("");
   const [openaiKey, setOpenaiKey] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
+  const [pexelsKey, setPexelsKey] = useState("");
   const [ollamaHost, setOllamaHost] = useState("http://localhost:11434");
   const [subtitleStyle, setSubtitleStyle] = useState("hormozi");
   const [autoZoom, setAutoZoom] = useState(true);
   const [musicMood, setMusicMood] = useState<string | null>(null);
+  const [defaultBroll, setDefaultBroll] = useState(false);
 
   // Password visibility toggles
   const [showGemini, setShowGemini] = useState(false);
   const [showOpenai, setShowOpenai] = useState(false);
   const [showAnthropic, setShowAnthropic] = useState(false);
+  const [showPexels, setShowPexels] = useState(false);
 
   // Provider test state
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
@@ -79,6 +83,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         setSubtitleStyle(data.default_subtitle_style || "hormozi");
         setAutoZoom(data.default_auto_zoom !== false);
         setMusicMood(data.default_music_mood || null);
+        setDefaultBroll(data.default_broll === true);
       })
       .catch((err) => {
         setErrorMsg(err?.message || "Failed to load current settings");
@@ -119,16 +124,19 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         gemini_api_key: geminiKey.trim() || undefined,
         openai_api_key: openaiKey.trim() || undefined,
         anthropic_api_key: anthropicKey.trim() || undefined,
+        pexels_api_key: pexelsKey.trim() || undefined,
         ollama_host: ollamaHost.trim() || undefined,
         default_subtitle_style: subtitleStyle,
         default_auto_zoom: autoZoom,
         default_music_mood: musicMood,
+        default_broll: defaultBroll,
       });
 
       setSettings(updated);
       setGeminiKey("");
       setOpenaiKey("");
       setAnthropicKey("");
+      setPexelsKey("");
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: unknown) {
@@ -147,6 +155,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     if (targetProvider === "gemini") keyToSend = geminiKey.trim() || undefined;
     if (targetProvider === "openai") keyToSend = openaiKey.trim() || undefined;
     if (targetProvider === "anthropic") keyToSend = anthropicKey.trim() || undefined;
+    if (targetProvider === "pexels") keyToSend = pexelsKey.trim() || undefined;
 
     try {
       const res = await api.testProvider({
@@ -459,6 +468,57 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                       </div>
                     </div>
 
+                    {/* Pexels Video API */}
+                    <div className="p-4 rounded-2xl border border-border/70 bg-surface-2/30 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Film className="size-3.5 text-emerald-400" />
+                          <span className="text-xs font-semibold text-fg">Pexels Stock Video API Key</span>
+                          {settings?.pexels_key_set ? (
+                            <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                              <Check className="size-2.5" /> Key Saved
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[10px] text-muted">
+                              Optional (Procedural fallback enabled)
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={testingProvider === "pexels"}
+                          onClick={() => handleTestProvider("pexels")}
+                          className="flex items-center gap-1.5 rounded-lg border border-border/80 bg-surface-3 px-2.5 py-1 text-[11px] font-medium text-fg hover:bg-surface-2 transition disabled:opacity-50"
+                        >
+                          {testingProvider === "pexels" ? (
+                            <Loader2 className="size-3 animate-spin text-violet-brand" />
+                          ) : (
+                            <Radio className="size-3 text-cyan-400" />
+                          )}
+                          Test Ping
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type={showPexels ? "text" : "password"}
+                          placeholder={settings?.pexels_key_set ? "••••••••••••••••••••••••" : "Pexels API Key (free from pexels.com/api)"}
+                          value={pexelsKey}
+                          onChange={(e) => setPexelsKey(e.target.value)}
+                          className="w-full rounded-xl border border-border/80 bg-surface-1 px-3 py-2 pr-9 text-xs font-mono text-fg placeholder:text-muted/50 focus:border-violet-brand focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPexels(!showPexels)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-fg"
+                        >
+                          {showPexels ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-muted">
+                        Powers automatic 9:16 vertical stock cutaways. Zero-dependency procedural motion sweeps will be used if omitted.
+                      </p>
+                    </div>
+
                     {/* Ollama Local */}
                     <div className="p-4 rounded-2xl border border-border/70 bg-surface-2/30 space-y-2.5">
                       <div className="flex items-center justify-between">
@@ -605,6 +665,30 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         type="checkbox"
                         checked={autoZoom}
                         onChange={(e) => setAutoZoom(e.target.checked)}
+                        className="sr-only peer"
+                      />
+                      <div className="w-11 h-6 bg-surface-3 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-brand"></div>
+                    </label>
+                  </div>
+
+                  {/* Default AI B-Roll Cutaways */}
+                  <div className="p-4 rounded-2xl border border-border/70 bg-surface-2/30 flex items-center justify-between gap-4">
+                    <div className="space-y-0.5">
+                      <div className="flex items-center gap-2">
+                        <Film className="size-4 text-emerald-400" />
+                        <span className="text-xs font-semibold text-fg">
+                          Default AI B-Roll Cutaways
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-muted">
+                        Automatically inserts contextual vertical video cutaways beneath subtitles for spoken keywords
+                      </p>
+                    </div>
+                    <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                      <input
+                        type="checkbox"
+                        checked={defaultBroll}
+                        onChange={(e) => setDefaultBroll(e.target.checked)}
                         className="sr-only peer"
                       />
                       <div className="w-11 h-6 bg-surface-3 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-violet-brand"></div>

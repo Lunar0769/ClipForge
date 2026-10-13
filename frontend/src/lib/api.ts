@@ -73,6 +73,7 @@ export const api = {
       subtitle_style?: string;
       auto_zoom?: boolean;
       music_mood?: string | null;
+      broll_enabled?: boolean;
     }
   ) =>
     request<Clip>(`/clips/${clipId}`, {
@@ -87,6 +88,7 @@ export const api = {
           subtitleStyle?: string;
           autoZoom?: boolean;
           musicMood?: string | null;
+          brollEnabled?: boolean;
           startS?: number;
           endS?: number;
           title?: string;
@@ -103,6 +105,7 @@ export const api = {
         subtitle_style: opts?.subtitleStyle ?? "hormozi",
         auto_zoom: opts?.autoZoom ?? true,
         music_mood: opts?.musicMood ?? null,
+        broll_enabled: opts?.brollEnabled ?? false,
         start_s: opts?.startS,
         end_s: opts?.endS,
         title: opts?.title,
@@ -116,10 +119,12 @@ export const api = {
     gemini_api_key?: string | null;
     openai_api_key?: string | null;
     anthropic_api_key?: string | null;
+    pexels_api_key?: string | null;
     ollama_host?: string | null;
     default_subtitle_style?: string | null;
     default_auto_zoom?: boolean | null;
     default_music_mood?: string | null;
+    default_broll?: boolean | null;
   }) =>
     request<AppSettings>("/settings", {
       method: "PUT",

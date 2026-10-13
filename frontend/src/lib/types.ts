@@ -68,10 +68,12 @@ export interface AppSettings {
   gemini_key_set: boolean;
   openai_key_set: boolean;
   anthropic_key_set: boolean;
+  pexels_key_set: boolean;
   ollama_host: string | null;
   default_subtitle_style: string;
   default_auto_zoom: boolean;
   default_music_mood: string | null;
+  default_broll: boolean;
 }
 
 export interface SeoPack {
@@ -89,6 +91,14 @@ export interface SubScores {
   value: number;
   shareability: number;
   loop_potential: number;
+}
+
+export interface BRollCue {
+  start_s: number;
+  end_s: number;
+  keyword: string;
+  source: string;
+  video_path?: string | null;
 }
 
 export interface Clip {
@@ -112,6 +122,8 @@ export interface Clip {
   subtitle_style?: string | null;
   auto_zoom?: boolean | null;
   music_mood?: string | null;
+  broll_enabled?: boolean | null;
+  broll_cues?: BRollCue[] | null;
   seo: SeoPack | null;
   created_at: string;
   updated_at: string;
