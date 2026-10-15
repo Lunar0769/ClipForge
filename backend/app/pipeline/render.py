@@ -55,9 +55,10 @@ def render_clip_video(
     auto_zoom: bool = True,
     music_mood: str | None = None,
     broll_cues: list[Any] | None = None,
+    dubbed_audio: Path | None = None,
     cancel: threading.Event | None = None,
 ) -> None:
-    """Renders a single 9:16 vertical video slice from src to dst with optional ASS subtitles, dynamic punch-in zoom, mood audio bed, and B-roll cutaways."""
+    """Renders a single 9:16 vertical video slice from src to dst with optional ASS subtitles, dynamic punch-in zoom, mood audio bed, B-roll cutaways, and dubbed audio."""
     tmp = dst.with_name(f"{dst.stem}.tmp{dst.suffix}")
     ffmpeg = _tool("ffmpeg")
     duration = max(1.0, end_s - start_s)
@@ -88,6 +89,13 @@ def render_clip_video(
         music_input_idx = input_count
         input_count += 1
 
+    # Dubbed Audio input
+    dub_input_idx = None
+    if dubbed_audio and Path(dubbed_audio).exists():
+        extra_inputs.extend(["-i", str(Path(dubbed_audio).resolve())])
+        dub_input_idx = input_count
+        input_count += 1
+
     # B-roll Video Inputs
     valid_brolls: list[tuple[int, float, float]] = []
     if broll_cues:
@@ -116,19 +124,30 @@ def render_clip_video(
 
     # Audio & Mood Bed mapping
     audio_maps: list[str] = []
-    if music_input_idx is not None:
-        has_audio = True
-        try:
-            info = media.probe(src)
-            has_audio = info.has_audio
-        except Exception:
-            pass
+    has_audio = True
+    try:
+        info = media.probe(src)
+        has_audio = info.has_audio
+    except Exception:
+        pass
 
+    if dub_input_idx is not None:
         if has_audio:
-            filter_chains.append(f"[0:a]volume=1.0[a0];[{music_input_idx}:a]volume=0.20[a1];[a0][a1]amix=inputs=2:duration=first[a]")
+            filter_chains.append(f"[0:a]volume=0.10[a_orig_ducked];[{dub_input_idx}:a]volume=1.0[a_dub];[a_orig_ducked][a_dub]amix=inputs=2:duration=first[a_voice]")
+        else:
+            filter_chains.append(f"[{dub_input_idx}:a]volume=1.0[a_voice]")
+        base_voice_stream = "[a_voice]"
+    else:
+        base_voice_stream = "[0:a]" if has_audio else None
+
+    if music_input_idx is not None:
+        if base_voice_stream:
+            filter_chains.append(f"{base_voice_stream}volume=1.0[v_aud];[{music_input_idx}:a]volume=0.20[m_aud];[v_aud][m_aud]amix=inputs=2:duration=first[a]")
         else:
             filter_chains.append(f"[{music_input_idx}:a]volume=0.25[a]")
         audio_maps = ["-map", "[a]"]
+    elif base_voice_stream:
+        audio_maps = ["-map", base_voice_stream]
     else:
         audio_maps = ["-map", "0:a?"]
 

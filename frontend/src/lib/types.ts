@@ -124,6 +124,8 @@ export interface Clip {
   music_mood?: string | null;
   broll_enabled?: boolean | null;
   broll_cues?: BRollCue[] | null;
+  target_language?: string | null;
+  dubbed_audio_file?: string | null;
   seo: SeoPack | null;
   created_at: string;
   updated_at: string;

@@ -14,6 +14,7 @@ import {
   Check,
   AlertCircle,
   Film,
+  Globe,
 } from "lucide-react";
 import clsx from "clsx";
 import type { Clip, Project } from "../../lib/types";
@@ -49,6 +50,7 @@ export function ClipEditorModal({
   const [autoZoom, setAutoZoom] = useState(clip.auto_zoom !== false);
   const [musicMood, setMusicMood] = useState<string | null>(clip.music_mood || null);
   const [brollEnabled, setBrollEnabled] = useState(clip.broll_enabled === true);
+  const [targetLanguage, setTargetLanguage] = useState<string | null>(clip.target_language || null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
@@ -68,6 +70,7 @@ export function ClipEditorModal({
     setAutoZoom(clip.auto_zoom !== false);
     setMusicMood(clip.music_mood || null);
     setBrollEnabled(clip.broll_enabled === true);
+    setTargetLanguage(clip.target_language || null);
     setErrorMsg(null);
   }, [clip]);
 
@@ -118,6 +121,8 @@ export function ClipEditorModal({
     setSubtitleStyle(clip.subtitle_style || "hormozi");
     setAutoZoom(clip.auto_zoom !== false);
     setMusicMood(clip.music_mood || null);
+    setBrollEnabled(clip.broll_enabled === true);
+    setTargetLanguage(clip.target_language || null);
     setErrorMsg(null);
   };
 
@@ -141,6 +146,7 @@ export function ClipEditorModal({
         autoZoom,
         musicMood,
         brollEnabled,
+        targetLanguage,
         startS,
         endS,
         title,
@@ -417,8 +423,8 @@ export function ClipEditorModal({
                   </div>
                 </div>
 
-                {/* Auto-Zoom, Audio Bed & B-Roll Cutaways */}
-                <div className="pt-2 border-t border-border/60 grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                {/* Auto-Zoom, Audio Bed, B-Roll Cutaways & Multilingual Dubbing */}
+                <div className="pt-2 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
                   <div>
                     <span className="text-xs font-semibold uppercase tracking-wider text-muted flex items-center gap-1 mb-1.5">
                       <ZoomIn className="size-3 text-cyan-brand" />
@@ -478,7 +484,39 @@ export function ClipEditorModal({
                       <option value="suspense">🎬 Suspense Drama</option>
                     </select>
                   </div>
+
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted flex items-center gap-1 mb-1.5">
+                      <Globe className="size-3 text-cyan-400" />
+                      <span>AI Dubbing</span>
+                    </span>
+                    <select
+                      disabled={isRendering}
+                      value={targetLanguage || "none"}
+                      onChange={(e) => setTargetLanguage(e.target.value === "none" ? null : e.target.value)}
+                      className="w-full rounded-xl bg-surface border border-border px-2.5 py-1.5 text-xs font-medium text-fg focus:outline-none focus:border-cyan-400 cursor-pointer"
+                    >
+                      <option value="none">🎙️ Original Voice</option>
+                      <option value="es">🇪🇸 Spanish (es)</option>
+                      <option value="de">🇩🇪 German (de)</option>
+                      <option value="fr">🇫🇷 French (fr)</option>
+                      <option value="hi">🇮🇳 Hindi (hi)</option>
+                      <option value="ja">🇯🇵 Japanese (ja)</option>
+                      <option value="pt">🇧🇷 Portuguese (pt)</option>
+                      <option value="it">🇮🇹 Italian (it)</option>
+                    </select>
+                  </div>
                 </div>
+
+                {/* Multilingual Dubbing info banner */}
+                {targetLanguage && (
+                  <div className="pt-2 flex items-center gap-2 text-[11px] text-cyan-300 bg-cyan-500/10 border border-cyan-500/20 rounded-xl px-3 py-2">
+                    <Globe className="size-3.5 shrink-0 text-cyan-400" />
+                    <span>
+                      <strong>Multilingual Dubbing ({targetLanguage.toUpperCase()})</strong>: Neural Edge speech synthesis will duck original voice to 10% and translate animated kinetic subtitles.
+                    </span>
+                  </div>
+                )}
 
                 {/* B-Roll Cues preview badge */}
                 {brollEnabled && clip.broll_cues && clip.broll_cues.length > 0 && (

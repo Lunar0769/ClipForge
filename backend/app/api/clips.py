@@ -134,6 +134,8 @@ def update_clip(
         updates["music_mood"] = req.music_mood
     if req.broll_enabled is not None:
         updates["broll_enabled"] = req.broll_enabled
+    if req.target_language is not None:
+        updates["target_language"] = req.target_language
 
     if updates:
         clip = repo.update_clip(svc.engine, clip.id, **updates)
@@ -184,9 +186,26 @@ def rerender_clip(
         except Exception:
             pass
 
-    if words:
+    # Neural Dubbing & Translation if requested
+    dubbed_audio_path = None
+    target_words = words
+    if req.target_language:
+        try:
+            from app.pipeline.dubbing import generate_dubbed_clip_audio
+            dub_file = clips_dir / f"{clip.id}_dub_{req.target_language}.mp3"
+            dubbed_audio_path, target_words = generate_dubbed_clip_audio(
+                words=words,
+                clip_start_s=start_s,
+                clip_end_s=end_s,
+                target_lang=req.target_language,
+                dst_path=dub_file,
+            )
+        except Exception as dub_exc:
+            logger.warning("Dubbing generation error for clip %s: %s", clip.id, dub_exc)
+
+    if target_words:
         write_clip_ass_file(
-            words=words,
+            words=target_words,
             clip_start_s=start_s,
             clip_end_s=end_s,
             dst_path=ass_dst,
@@ -221,6 +240,7 @@ def rerender_clip(
         auto_zoom=req.auto_zoom,
         music_mood=req.music_mood,
         broll_cues=active_broll_cues,
+        dubbed_audio=dubbed_audio_path,
     )
 
     # Refresh thumbnail
@@ -240,6 +260,8 @@ def rerender_clip(
         music_mood=req.music_mood,
         broll_enabled=req.broll_enabled,
         broll_cues=[c.model_dump() for c in active_broll_cues] if active_broll_cues else clip.broll_cues,
+        target_language=req.target_language,
+        dubbed_audio_file=f"clips/{dubbed_audio_path.name}" if dubbed_audio_path and dubbed_audio_path.exists() else clip.dubbed_audio_file,
         start_s=start_s,
         end_s=end_s,
         title=title,

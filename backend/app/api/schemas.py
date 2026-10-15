@@ -88,6 +88,8 @@ class ClipOut(BaseModel):
     music_mood: str | None = None
     broll_enabled: bool | None = False
     broll_cues: list[dict[str, Any]] | None = None
+    target_language: str | None = None
+    dubbed_audio_file: str | None = None
     seo: SeoPack | None = None
     created_at: datetime
     updated_at: datetime
@@ -100,6 +102,7 @@ class ClipRenderRequest(BaseModel):
     auto_zoom: bool = True
     music_mood: str | None = None
     broll_enabled: bool = False
+    target_language: str | None = None
     start_s: float | None = None
     end_s: float | None = None
     title: str | None = None
@@ -115,6 +118,7 @@ class ClipUpdateRequest(BaseModel):
     auto_zoom: bool | None = None
     music_mood: str | None = None
     broll_enabled: bool | None = None
+    target_language: str | None = None
 
 
 

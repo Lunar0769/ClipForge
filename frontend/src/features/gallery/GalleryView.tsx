@@ -19,6 +19,7 @@ import {
   ZoomIn,
   Music,
   Scissors,
+  Globe,
 } from "lucide-react";
 import clsx from "clsx";
 import type { Clip, SeoPack, SubScores } from "../../lib/types";
@@ -311,6 +312,12 @@ function ClipCard({ clip, project, index, isSelected, onSelect }: ClipCardProps)
               <span className="font-mono text-xs text-muted">
                 {fmtDuration(clip.start_s, clip.end_s)}
               </span>
+              {clip.target_language && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-cyan-500/15 border border-cyan-500/30 px-2 py-0.5 text-[10px] font-semibold text-cyan-300 uppercase">
+                  <Globe className="size-2.5" />
+                  {clip.target_language}
+                </span>
+              )}
             </div>
 
             <ScoreRing score={clip.score} size={44} />

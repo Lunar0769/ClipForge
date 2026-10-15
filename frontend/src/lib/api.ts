@@ -74,6 +74,7 @@ export const api = {
       auto_zoom?: boolean;
       music_mood?: string | null;
       broll_enabled?: boolean;
+      target_language?: string | null;
     }
   ) =>
     request<Clip>(`/clips/${clipId}`, {
@@ -89,6 +90,7 @@ export const api = {
           autoZoom?: boolean;
           musicMood?: string | null;
           brollEnabled?: boolean;
+          targetLanguage?: string | null;
           startS?: number;
           endS?: number;
           title?: string;
@@ -106,6 +108,7 @@ export const api = {
         auto_zoom: opts?.autoZoom ?? true,
         music_mood: opts?.musicMood ?? null,
         broll_enabled: opts?.brollEnabled ?? false,
+        target_language: opts?.targetLanguage ?? null,
         start_s: opts?.startS,
         end_s: opts?.endS,
         title: opts?.title,
