@@ -138,6 +138,8 @@ def update_clip(
         updates["target_language"] = req.target_language
     if req.layout_mode is not None:
         updates["layout_mode"] = req.layout_mode
+    if req.filler_trim is not None:
+        updates["filler_trim"] = req.filler_trim
 
     if updates:
         clip = repo.update_clip(svc.engine, clip.id, **updates)
@@ -205,6 +207,20 @@ def rerender_clip(
         except Exception as dub_exc:
             logger.warning("Dubbing generation error for clip %s: %s", clip.id, dub_exc)
 
+    # Silence & Filler jump-cut trimmer if enabled
+    keep_intervals = None
+    if req.filler_trim and target_words:
+        try:
+            from app.pipeline.fillers import detect_silence_and_fillers
+            keep_intervals, target_words, time_saved = detect_silence_and_fillers(
+                words=target_words,
+                clip_start_s=start_s,
+                clip_end_s=end_s,
+            )
+            logger.info("Jump-cut trimmer: trimmed %.2fs for clip %s", time_saved, clip.id)
+        except Exception as filler_exc:
+            logger.warning("Jump-cut trimmer failed for clip %s: %s", clip.id, filler_exc)
+
     if target_words:
         write_clip_ass_file(
             words=target_words,
@@ -245,6 +261,7 @@ def rerender_clip(
         broll_cues=active_broll_cues,
         dubbed_audio=dubbed_audio_path,
         layout_mode=layout_mode,
+        keep_intervals=keep_intervals,
     )
 
     # Refresh thumbnail
@@ -267,6 +284,7 @@ def rerender_clip(
         target_language=req.target_language,
         dubbed_audio_file=f"clips/{dubbed_audio_path.name}" if dubbed_audio_path and dubbed_audio_path.exists() else clip.dubbed_audio_file,
         layout_mode=layout_mode,
+        filler_trim=req.filler_trim,
         start_s=start_s,
         end_s=end_s,
         title=title,

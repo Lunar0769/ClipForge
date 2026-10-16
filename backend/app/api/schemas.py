@@ -91,6 +91,7 @@ class ClipOut(BaseModel):
     target_language: str | None = None
     dubbed_audio_file: str | None = None
     layout_mode: str | None = "fit_blur"
+    filler_trim: bool | None = False
     seo: SeoPack | None = None
     created_at: datetime
     updated_at: datetime
@@ -105,6 +106,7 @@ class ClipRenderRequest(BaseModel):
     broll_enabled: bool = False
     target_language: str | None = None
     layout_mode: str = "fit_blur"
+    filler_trim: bool = False
     start_s: float | None = None
     end_s: float | None = None
     title: str | None = None
@@ -122,6 +124,7 @@ class ClipUpdateRequest(BaseModel):
     broll_enabled: bool | None = None
     target_language: str | None = None
     layout_mode: str | None = None
+    filler_trim: bool | None = None
 
 
 

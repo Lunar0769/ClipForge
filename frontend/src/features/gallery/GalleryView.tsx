@@ -20,6 +20,7 @@ import {
   Music,
   Scissors,
   Globe,
+  Zap,
 } from "lucide-react";
 import clsx from "clsx";
 import type { Clip, SeoPack, SubScores } from "../../lib/types";
@@ -321,6 +322,12 @@ function ClipCard({ clip, project, index, isSelected, onSelect }: ClipCardProps)
               {clip.layout_mode && clip.layout_mode !== "fit_blur" && (
                 <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 border border-violet-500/30 px-2 py-0.5 text-[10px] font-semibold text-violet-300 capitalize">
                   {clip.layout_mode}
+                </span>
+              )}
+              {clip.filler_trim && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 text-[10px] font-semibold text-amber-300">
+                  <Zap className="size-2.5" />
+                  Fast Paced
                 </span>
               )}
             </div>

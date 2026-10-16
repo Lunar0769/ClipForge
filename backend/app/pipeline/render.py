@@ -58,9 +58,10 @@ def render_clip_video(
     broll_cues: list[Any] | None = None,
     dubbed_audio: Path | None = None,
     layout_mode: str = "fit_blur",
+    keep_intervals: list[tuple[float, float]] | None = None,
     cancel: threading.Event | None = None,
 ) -> None:
-    """Renders a single 9:16 vertical video slice from src to dst with layout framing, optional ASS subtitles, dynamic punch-in zoom, mood audio bed, B-roll cutaways, and dubbed audio."""
+    """Renders a single 9:16 vertical video slice from src to dst with layout framing, optional ASS subtitles, dynamic punch-in zoom, mood audio bed, B-roll cutaways, dubbed audio, and jump-cut silence/filler trimming."""
     tmp = dst.with_name(f"{dst.stem}.tmp{dst.suffix}")
     ffmpeg = _tool("ffmpeg")
     duration = max(1.0, end_s - start_s)
@@ -108,6 +109,13 @@ def render_clip_video(
         filter_chains.append(f"[{curr_comp}][broll_{i}]overlay=x=0:y=0:enable='between(t,{c_start:.2f},{c_end:.2f})'[{next_comp}]")
         curr_comp = next_comp
 
+    # Apply jump-cut filter if keep_intervals specified
+    if keep_intervals:
+        from app.pipeline.fillers import build_jumpcut_select_filter
+        v_sel, _ = build_jumpcut_select_filter(keep_intervals, start_s)
+        filter_chains.append(f"[{curr_comp}]{v_sel}[cut_v]")
+        curr_comp = "cut_v"
+
     # Subtitles on top of all visual layers
     if ass_file and ass_file.exists():
         filter_chains.append(f"[{curr_comp}]ass={ass_file.name}[v]")
@@ -131,6 +139,13 @@ def render_clip_video(
         base_voice_stream = "[a_voice]"
     else:
         base_voice_stream = "[0:a]" if has_audio else None
+
+    # Apply audio jump-cut filter if keep_intervals specified
+    if keep_intervals and base_voice_stream:
+        from app.pipeline.fillers import build_jumpcut_select_filter
+        _, a_sel = build_jumpcut_select_filter(keep_intervals, start_s)
+        filter_chains.append(f"{base_voice_stream}{a_sel}[cut_a]")
+        base_voice_stream = "[cut_a]"
 
     if music_input_idx is not None:
         if base_voice_stream:
@@ -260,13 +275,28 @@ class RenderStage:
             thumb_dst = clips_dir / f"{clip.id}.jpg"
             ass_dst = clips_dir / f"{clip.id}.ass"
 
-            # 1. Generate ASS subtitles if words exist
-            if words and not ass_dst.exists():
+            # 1. Jump-cut filler & silence analysis if enabled
+            keep_intervals = None
+            render_words = words
+            if clip.filler_trim and words:
+                try:
+                    from app.pipeline.fillers import detect_silence_and_fillers
+                    keep_intervals, render_words, saved_s = detect_silence_and_fillers(
+                        words=words,
+                        clip_start_s=clip.start_s,
+                        clip_end_s=clip.end_s,
+                    )
+                    logger.info("Silence/filler trimmer: saved %.2fs for clip %s", saved_s, clip.id)
+                except Exception as exc:
+                    logger.warning("Failed filler detection for clip %s: %s", clip.id, exc)
+
+            # 2. Generate ASS subtitles if words exist
+            if render_words and not ass_dst.exists():
                 try:
                     style_name = clip.subtitle_style or "hormozi"
                     hook = clip.hook_text or clip.title
                     write_clip_ass_file(
-                        words=words,
+                        words=render_words,
                         clip_start_s=clip.start_s,
                         clip_end_s=clip.end_s,
                         dst_path=ass_dst,
@@ -276,7 +306,7 @@ class RenderStage:
                 except Exception as exc:
                     logger.warning("Failed to generate ASS subtitles for clip %s: %s", clip.id, exc)
 
-            # 2. B-roll cutaway preparation if enabled
+            # 3. B-roll cutaway preparation if enabled
             active_broll_cues = []
             if clip.broll_enabled:
                 try:
@@ -292,7 +322,7 @@ class RenderStage:
                 except Exception as broll_err:
                     logger.warning("Failed to prepare B-roll cues for clip %s: %s", clip.id, broll_err)
 
-            # 3. Video render
+            # 4. Video render
             if not video_dst.exists():
                 ctx.emit(
                     "log",
@@ -309,10 +339,11 @@ class RenderStage:
                     music_mood=clip.music_mood,
                     broll_cues=active_broll_cues,
                     layout_mode=clip.layout_mode or "fit_blur",
+                    keep_intervals=keep_intervals,
                     cancel=ctx.cancel_event,
                 )
 
-            # 4. Thumbnail extraction (pick a frame 1.5s in or at midpoint)
+            # 5. Thumbnail extraction (pick a frame 1.5s in or at midpoint)
             if not thumb_dst.exists():
                 mid = clip.start_s + min(1.5, (clip.end_s - clip.start_s) / 2)
                 try:
@@ -325,7 +356,7 @@ class RenderStage:
                 except Exception as exc:
                     logger.warning("Thumbnail extraction failed for clip %s: %s", clip.id, exc)
 
-            # 5. Update database record
+            # 6. Update database record
             repo.update_clip(
                 ctx.engine,
                 clip.id,
@@ -337,6 +368,7 @@ class RenderStage:
                 broll_enabled=clip.broll_enabled,
                 broll_cues=[c.model_dump() for c in active_broll_cues] if active_broll_cues else clip.broll_cues,
                 layout_mode=clip.layout_mode or "fit_blur",
+                filler_trim=clip.filler_trim,
             )
 
             progress = (idx + 1) / total

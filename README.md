@@ -120,6 +120,7 @@ Missing optional keys simply disable that feature — jobs never fail because of
 - [x] **Phase 6.4 — AI B-Roll & Visual Cutaways:** Contextual keyword cue detection, Pexels API integration, procedural motion sweeps fallback, composited beneath subtitles
 - [x] **Phase 6.5 — Multilingual Dubbing & Audio Polish:** Edge-TTS neural speech synthesis (ES, DE, FR, HI, JA, PT, IT), time-aligned audio ducking mix, and translated kinetic subtitles
 - [x] **Phase 7 — Smart 9:16 Multi-Layout Reframe Engine:** Fit+Blur backdrop, Speaker Track full-bleed crop, Split Screen 50/50 dual stack, and Gaming Cam (facecam top + gameplay screen)
+- [x] **Phase 8 — AI Filler Word & Silence Jump-Cut Trimmer:** Vocal disfluency removal ("um", "uh", "ah"), dead-air pause compression (>0.75s to 0.15s), synchronized subtitle timestamp re-alignment, and fast-paced studio toggle
 
 ## 🧰 Tech stack
 

@@ -76,6 +76,7 @@ export const api = {
       broll_enabled?: boolean;
       target_language?: string | null;
       layout_mode?: string | null;
+      filler_trim?: boolean | null;
     }
   ) =>
     request<Clip>(`/clips/${clipId}`, {
@@ -93,6 +94,7 @@ export const api = {
           brollEnabled?: boolean;
           targetLanguage?: string | null;
           layoutMode?: string | null;
+          fillerTrim?: boolean;
           startS?: number;
           endS?: number;
           title?: string;
@@ -112,6 +114,7 @@ export const api = {
         broll_enabled: opts?.brollEnabled ?? false,
         target_language: opts?.targetLanguage ?? null,
         layout_mode: opts?.layoutMode ?? "fit_blur",
+        filler_trim: opts?.fillerTrim ?? false,
         start_s: opts?.startS,
         end_s: opts?.endS,
         title: opts?.title,

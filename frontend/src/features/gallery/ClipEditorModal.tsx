@@ -16,6 +16,7 @@ import {
   Film,
   Globe,
   LayoutTemplate,
+  Zap,
 } from "lucide-react";
 import clsx from "clsx";
 import type { Clip, Project } from "../../lib/types";
@@ -53,6 +54,7 @@ export function ClipEditorModal({
   const [brollEnabled, setBrollEnabled] = useState(clip.broll_enabled === true);
   const [targetLanguage, setTargetLanguage] = useState<string | null>(clip.target_language || null);
   const [layoutMode, setLayoutMode] = useState<string>(clip.layout_mode || "fit_blur");
+  const [fillerTrim, setFillerTrim] = useState(clip.filler_trim === true);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
@@ -74,6 +76,7 @@ export function ClipEditorModal({
     setBrollEnabled(clip.broll_enabled === true);
     setTargetLanguage(clip.target_language || null);
     setLayoutMode(clip.layout_mode || "fit_blur");
+    setFillerTrim(clip.filler_trim === true);
     setErrorMsg(null);
   }, [clip]);
 
@@ -127,6 +130,7 @@ export function ClipEditorModal({
     setBrollEnabled(clip.broll_enabled === true);
     setTargetLanguage(clip.target_language || null);
     setLayoutMode(clip.layout_mode || "fit_blur");
+    setFillerTrim(clip.filler_trim === true);
     setErrorMsg(null);
   };
 
@@ -152,6 +156,7 @@ export function ClipEditorModal({
         brollEnabled,
         targetLanguage,
         layoutMode,
+        fillerTrim,
         startS,
         endS,
         title,
@@ -460,8 +465,8 @@ export function ClipEditorModal({
                   </div>
                 </div>
 
-                {/* Auto-Zoom, Audio Bed, B-Roll Cutaways & Multilingual Dubbing */}
-                <div className="pt-2 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                {/* Auto-Zoom, Jump-Cut, Audio Bed, B-Roll Cutaways & Multilingual Dubbing */}
+                <div className="pt-2 border-t border-border/60 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-2.5">
                   <div>
                     <span className="text-xs font-semibold uppercase tracking-wider text-muted flex items-center gap-1 mb-1.5">
                       <ZoomIn className="size-3 text-cyan-brand" />
@@ -472,14 +477,36 @@ export function ClipEditorModal({
                       disabled={isRendering}
                       onClick={() => setAutoZoom(!autoZoom)}
                       className={clsx(
-                        "w-full rounded-xl px-2.5 py-1.5 text-xs font-medium transition flex items-center justify-center gap-1.5",
+                        "w-full rounded-xl px-2 py-1.5 text-xs font-medium transition flex items-center justify-center gap-1.5",
                         autoZoom
                           ? "bg-cyan-500/15 text-cyan-300 border border-cyan-500/30 font-semibold"
                           : "bg-surface text-muted border border-border hover:text-fg"
                       )}
                     >
                       <span className={clsx("size-1.5 rounded-full", autoZoom ? "bg-cyan-400 animate-pulse" : "bg-muted")} />
-                      {autoZoom ? "Punch-in ON" : "Static 1.0x"}
+                      {autoZoom ? "Zoom ON" : "Static 1.0x"}
+                    </button>
+                  </div>
+
+                  <div>
+                    <span className="text-xs font-semibold uppercase tracking-wider text-muted flex items-center gap-1 mb-1.5">
+                      <Zap className="size-3 text-amber-400" />
+                      <span>Jump-Cut</span>
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isRendering}
+                      onClick={() => setFillerTrim(!fillerTrim)}
+                      className={clsx(
+                        "w-full rounded-xl px-2 py-1.5 text-xs font-medium transition flex items-center justify-center gap-1.5",
+                        fillerTrim
+                          ? "bg-amber-500/15 text-amber-300 border border-amber-500/30 font-semibold"
+                          : "bg-surface text-muted border border-border hover:text-fg"
+                      )}
+                      title="Trim pauses (>0.75s) and ums/ahs for fast pacing"
+                    >
+                      <span className={clsx("size-1.5 rounded-full", fillerTrim ? "bg-amber-400 animate-pulse" : "bg-muted")} />
+                      {fillerTrim ? "Cut Pauses" : "Natural"}
                     </button>
                   </div>
 
@@ -493,7 +520,7 @@ export function ClipEditorModal({
                       disabled={isRendering}
                       onClick={() => setBrollEnabled(!brollEnabled)}
                       className={clsx(
-                        "w-full rounded-xl px-2.5 py-1.5 text-xs font-medium transition flex items-center justify-center gap-1.5",
+                        "w-full rounded-xl px-2 py-1.5 text-xs font-medium transition flex items-center justify-center gap-1.5",
                         brollEnabled
                           ? "bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-semibold"
                           : "bg-surface text-muted border border-border hover:text-fg"
@@ -513,12 +540,12 @@ export function ClipEditorModal({
                       disabled={isRendering}
                       value={musicMood || "none"}
                       onChange={(e) => setMusicMood(e.target.value === "none" ? null : e.target.value)}
-                      className="w-full rounded-xl bg-surface border border-border px-2.5 py-1.5 text-xs font-medium text-fg focus:outline-none focus:border-violet-brand cursor-pointer"
+                      className="w-full rounded-xl bg-surface border border-border px-2 py-1.5 text-xs font-medium text-fg focus:outline-none focus:border-violet-brand cursor-pointer"
                     >
                       <option value="none">Speech Only</option>
                       <option value="chill">☕ Chill Lo-fi</option>
                       <option value="energetic">⚡ Upbeat Beat</option>
-                      <option value="suspense">🎬 Suspense Drama</option>
+                      <option value="suspense">🎬 Suspense</option>
                     </select>
                   </div>
 
@@ -531,19 +558,29 @@ export function ClipEditorModal({
                       disabled={isRendering}
                       value={targetLanguage || "none"}
                       onChange={(e) => setTargetLanguage(e.target.value === "none" ? null : e.target.value)}
-                      className="w-full rounded-xl bg-surface border border-border px-2.5 py-1.5 text-xs font-medium text-fg focus:outline-none focus:border-cyan-400 cursor-pointer"
+                      className="w-full rounded-xl bg-surface border border-border px-2 py-1.5 text-xs font-medium text-fg focus:outline-none focus:border-cyan-400 cursor-pointer"
                     >
-                      <option value="none">🎙️ Original Voice</option>
-                      <option value="es">🇪🇸 Spanish (es)</option>
-                      <option value="de">🇩🇪 German (de)</option>
-                      <option value="fr">🇫🇷 French (fr)</option>
-                      <option value="hi">🇮🇳 Hindi (hi)</option>
-                      <option value="ja">🇯🇵 Japanese (ja)</option>
-                      <option value="pt">🇧🇷 Portuguese (pt)</option>
-                      <option value="it">🇮🇹 Italian (it)</option>
+                      <option value="none">🎙️ Original</option>
+                      <option value="es">🇪🇸 Spanish</option>
+                      <option value="de">🇩🇪 German</option>
+                      <option value="fr">🇫🇷 French</option>
+                      <option value="hi">🇮🇳 Hindi</option>
+                      <option value="ja">🇯🇵 Japanese</option>
+                      <option value="pt">🇧🇷 Portuguese</option>
+                      <option value="it">🇮🇹 Italian</option>
                     </select>
                   </div>
                 </div>
+
+                {/* Jump-cut pacing info banner */}
+                {fillerTrim && (
+                  <div className="pt-2 flex items-center gap-2 text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-xl px-3 py-2">
+                    <Zap className="size-3.5 shrink-0 text-amber-400" />
+                    <span>
+                      <strong>Jump-Cut Pacing active</strong>: Pauses &gt; 0.75s and filler words (&ldquo;um&rdquo;, &ldquo;uh&rdquo;, &ldquo;ah&rdquo;) will be cut to 0.15s with synchronized kinetic subtitles.
+                    </span>
+                  </div>
+                )}
 
                 {/* Multilingual Dubbing info banner */}
                 {targetLanguage && (
