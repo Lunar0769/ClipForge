@@ -87,5 +87,6 @@ class Clip(SQLModel, table=True):
     broll_cues: list[dict[str, Any]] | None = Field(default=None, sa_column=Column(JSON, nullable=True))
     target_language: str | None = Field(default=None, nullable=True)
     dubbed_audio_file: str | None = None
+    layout_mode: str | None = Field(default="fit_blur", nullable=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

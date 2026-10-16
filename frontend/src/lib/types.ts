@@ -126,6 +126,7 @@ export interface Clip {
   broll_cues?: BRollCue[] | null;
   target_language?: string | null;
   dubbed_audio_file?: string | null;
+  layout_mode?: "fit_blur" | "track" | "split" | "gaming" | string | null;
   seo: SeoPack | null;
   created_at: string;
   updated_at: string;

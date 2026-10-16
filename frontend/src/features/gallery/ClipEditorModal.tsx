@@ -15,6 +15,7 @@ import {
   AlertCircle,
   Film,
   Globe,
+  LayoutTemplate,
 } from "lucide-react";
 import clsx from "clsx";
 import type { Clip, Project } from "../../lib/types";
@@ -51,6 +52,7 @@ export function ClipEditorModal({
   const [musicMood, setMusicMood] = useState<string | null>(clip.music_mood || null);
   const [brollEnabled, setBrollEnabled] = useState(clip.broll_enabled === true);
   const [targetLanguage, setTargetLanguage] = useState<string | null>(clip.target_language || null);
+  const [layoutMode, setLayoutMode] = useState<string>(clip.layout_mode || "fit_blur");
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
@@ -71,6 +73,7 @@ export function ClipEditorModal({
     setMusicMood(clip.music_mood || null);
     setBrollEnabled(clip.broll_enabled === true);
     setTargetLanguage(clip.target_language || null);
+    setLayoutMode(clip.layout_mode || "fit_blur");
     setErrorMsg(null);
   }, [clip]);
 
@@ -123,6 +126,7 @@ export function ClipEditorModal({
     setMusicMood(clip.music_mood || null);
     setBrollEnabled(clip.broll_enabled === true);
     setTargetLanguage(clip.target_language || null);
+    setLayoutMode(clip.layout_mode || "fit_blur");
     setErrorMsg(null);
   };
 
@@ -147,6 +151,7 @@ export function ClipEditorModal({
         musicMood,
         brollEnabled,
         targetLanguage,
+        layoutMode,
         startS,
         endS,
         title,
@@ -391,9 +396,41 @@ export function ClipEditorModal({
               </div>
 
               {/* Subtitles & Polish Style Bar */}
-              <div className="rounded-2xl border border-border/80 bg-surface-2/40 p-4 space-y-3">
-                {/* Kinetic Subtitles */}
+              <div className="rounded-2xl border border-border/80 bg-surface-2/40 p-4 space-y-3.5">
+                {/* Smart 9:16 Reframe Layout */}
                 <div>
+                  <span className="text-xs font-semibold uppercase tracking-wider text-muted flex items-center gap-1.5 mb-2">
+                    <LayoutTemplate className="size-3 text-cyan-brand" />
+                    <span>Smart 9:16 Layout Framing</span>
+                  </span>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                    {[
+                      { id: "fit_blur", label: "🌫️ Fit + Blur", tip: "Blurred ambient backdrop" },
+                      { id: "track", label: "🎯 Speaker Track", tip: "Full-bleed center/face crop" },
+                      { id: "split", label: "⚡ Split Screen", tip: "50/50 dual stacked view" },
+                      { id: "gaming", label: "🎮 Gaming Cam", tip: "Facecam top + game below" },
+                    ].map((preset) => (
+                      <button
+                        key={preset.id}
+                        type="button"
+                        disabled={isRendering}
+                        onClick={() => setLayoutMode(preset.id)}
+                        className={clsx(
+                          "rounded-xl px-2 py-1.5 text-xs font-medium transition text-center",
+                          layoutMode === preset.id
+                            ? "bg-cyan-500/20 text-cyan-300 border border-cyan-500/40 shadow-sm font-semibold"
+                            : "bg-surface text-muted hover:text-fg hover:bg-surface-3"
+                        )}
+                        title={preset.tip}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Kinetic Subtitles */}
+                <div className="pt-2 border-t border-border/60">
                   <span className="text-xs font-semibold uppercase tracking-wider text-muted flex items-center gap-1.5 mb-2">
                     <Sparkles className="size-3 text-violet-brand" />
                     <span>Kinetic Subtitles Style</span>

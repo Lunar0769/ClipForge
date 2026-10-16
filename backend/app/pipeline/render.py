@@ -21,6 +21,7 @@ from app.models import Clip
 from app.pipeline.captions import write_clip_ass_file
 from app.pipeline.context import PipelineContext
 from app.pipeline.errors import StageCancelled, StageError
+from app.pipeline.reframe.layouts import build_layout_filtergraph
 from app.pipeline.transcript import Transcript
 
 logger = logging.getLogger(__name__)
@@ -56,25 +57,16 @@ def render_clip_video(
     music_mood: str | None = None,
     broll_cues: list[Any] | None = None,
     dubbed_audio: Path | None = None,
+    layout_mode: str = "fit_blur",
     cancel: threading.Event | None = None,
 ) -> None:
-    """Renders a single 9:16 vertical video slice from src to dst with optional ASS subtitles, dynamic punch-in zoom, mood audio bed, B-roll cutaways, and dubbed audio."""
+    """Renders a single 9:16 vertical video slice from src to dst with layout framing, optional ASS subtitles, dynamic punch-in zoom, mood audio bed, B-roll cutaways, and dubbed audio."""
     tmp = dst.with_name(f"{dst.stem}.tmp{dst.suffix}")
     ffmpeg = _tool("ffmpeg")
     duration = max(1.0, end_s - start_s)
 
-    # 1. Foreground stream framing: dynamic punch-in zoom or standard fit
-    if auto_zoom:
-        fg_filter = "crop=w='if(between(mod(t,12),4,8), in_w*0.92, in_w)':h='if(between(mod(t,12),4,8), in_h*0.92, in_h)':x='(in_w-out_w)/2':y='(in_h-out_h)/2',scale=1080:1920:force_original_aspect_ratio=decrease"
-    else:
-        fg_filter = "scale=1080:1920:force_original_aspect_ratio=decrease"
-
-    filter_chains = [
-        "[0:v]split=2[bg_in][fg_in]",
-        "[bg_in]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:2[bg]",
-        f"[fg_in]{fg_filter}[fg]",
-        "[bg][fg]overlay=(W-w)/2:(H-h)/2[base_comp_0]",
-    ]
+    # 1. Base 9:16 vertical layout composition: fit_blur, track, split, or gaming
+    filter_chains = build_layout_filtergraph(layout_mode=layout_mode, auto_zoom=auto_zoom)
 
     extra_inputs: list[str] = []
     input_count = 1
@@ -316,6 +308,7 @@ class RenderStage:
                     auto_zoom=clip.auto_zoom if clip.auto_zoom is not None else True,
                     music_mood=clip.music_mood,
                     broll_cues=active_broll_cues,
+                    layout_mode=clip.layout_mode or "fit_blur",
                     cancel=ctx.cancel_event,
                 )
 
@@ -343,6 +336,7 @@ class RenderStage:
                 music_mood=clip.music_mood,
                 broll_enabled=clip.broll_enabled,
                 broll_cues=[c.model_dump() for c in active_broll_cues] if active_broll_cues else clip.broll_cues,
+                layout_mode=clip.layout_mode or "fit_blur",
             )
 
             progress = (idx + 1) / total

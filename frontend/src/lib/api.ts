@@ -75,6 +75,7 @@ export const api = {
       music_mood?: string | null;
       broll_enabled?: boolean;
       target_language?: string | null;
+      layout_mode?: string | null;
     }
   ) =>
     request<Clip>(`/clips/${clipId}`, {
@@ -91,6 +92,7 @@ export const api = {
           musicMood?: string | null;
           brollEnabled?: boolean;
           targetLanguage?: string | null;
+          layoutMode?: string | null;
           startS?: number;
           endS?: number;
           title?: string;
@@ -109,6 +111,7 @@ export const api = {
         music_mood: opts?.musicMood ?? null,
         broll_enabled: opts?.brollEnabled ?? false,
         target_language: opts?.targetLanguage ?? null,
+        layout_mode: opts?.layoutMode ?? "fit_blur",
         start_s: opts?.startS,
         end_s: opts?.endS,
         title: opts?.title,

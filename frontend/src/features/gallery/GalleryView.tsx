@@ -318,6 +318,11 @@ function ClipCard({ clip, project, index, isSelected, onSelect }: ClipCardProps)
                   {clip.target_language}
                 </span>
               )}
+              {clip.layout_mode && clip.layout_mode !== "fit_blur" && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-violet-500/15 border border-violet-500/30 px-2 py-0.5 text-[10px] font-semibold text-violet-300 capitalize">
+                  {clip.layout_mode}
+                </span>
+              )}
             </div>
 
             <ScoreRing score={clip.score} size={44} />

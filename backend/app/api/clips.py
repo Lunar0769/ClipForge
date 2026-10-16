@@ -136,6 +136,8 @@ def update_clip(
         updates["broll_enabled"] = req.broll_enabled
     if req.target_language is not None:
         updates["target_language"] = req.target_language
+    if req.layout_mode is not None:
+        updates["layout_mode"] = req.layout_mode
 
     if updates:
         clip = repo.update_clip(svc.engine, clip.id, **updates)
@@ -230,6 +232,7 @@ def rerender_clip(
             pass
 
     # Re-render video
+    layout_mode = req.layout_mode if req.layout_mode is not None else (clip.layout_mode or "fit_blur")
     video_dst.unlink(missing_ok=True)
     render_clip_video(
         src=src,
@@ -241,6 +244,7 @@ def rerender_clip(
         music_mood=req.music_mood,
         broll_cues=active_broll_cues,
         dubbed_audio=dubbed_audio_path,
+        layout_mode=layout_mode,
     )
 
     # Refresh thumbnail
@@ -262,6 +266,7 @@ def rerender_clip(
         broll_cues=[c.model_dump() for c in active_broll_cues] if active_broll_cues else clip.broll_cues,
         target_language=req.target_language,
         dubbed_audio_file=f"clips/{dubbed_audio_path.name}" if dubbed_audio_path and dubbed_audio_path.exists() else clip.dubbed_audio_file,
+        layout_mode=layout_mode,
         start_s=start_s,
         end_s=end_s,
         title=title,
