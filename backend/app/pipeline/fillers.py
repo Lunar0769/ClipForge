@@ -55,12 +55,17 @@ def detect_silence_and_fillers(
 
     # 1. Filter out filler words
     meaningful_words: list[Word] = []
+    filler_before: list[bool] = []  # was a filler spoken between this word and the previous kept word?
+    pending_filler = False
     for w in in_clip_words:
         raw_text = getattr(w, "text", getattr(w, "word", ""))
         clean = _clean_token(raw_text)
         if clean in FILLER_WORDS:
+            pending_filler = True
             continue
         meaningful_words.append(w)
+        filler_before.append(pending_filler)
+        pending_filler = False
 
     if not meaningful_words:
         return [(clip_start_s, clip_end_s)], in_clip_words, 0.0
@@ -97,7 +102,8 @@ def detect_silence_and_fillers(
         curr_w = meaningful_words[i]
         pause = curr_w.start - prev_w.end
 
-        if pause > max_pause_s:
+        # Cut long silences, and always cut out a spoken filler ("um") even if the pause around it is short.
+        if pause > max_pause_s or (filler_before[i] and pause > target_pause_s):
             # Cut segment boundary: finish current segment
             keep_intervals.append((round(curr_seg_start, 3), round(curr_seg_end + target_pause_s / 2, 3)))
             # Next segment starts target_pause_s / 2 before current word

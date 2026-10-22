@@ -139,3 +139,16 @@ def test_render_clip_video_with_keep_intervals(tmp_path, monkeypatch):
     cmd_str = " ".join(seen_cmds[0])
     assert "select='between(t," in cmd_str
     assert "aselect='between(t," in cmd_str
+
+
+def test_filler_inside_short_pauses_is_cut_from_audio():
+    words = [
+        Word(text=" So", start=1.0, end=1.3),
+        Word(text=" um,", start=1.5, end=1.9),
+        Word(text=" yes.", start=2.1, end=2.5),
+    ]
+    keep, realigned, saved = detect_silence_and_fillers(words=words, clip_start_s=1.0, clip_end_s=2.5)
+    assert len(keep) == 2, keep
+    assert all(not (s < 1.7 < e) for s, e in keep)  # the middle of "um" is never kept
+    assert [w.text.strip() for w in realigned] == ["So", "yes."]
+    assert saved > 0.4
