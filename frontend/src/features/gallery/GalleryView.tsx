@@ -19,6 +19,7 @@ import {
   ZoomIn,
   Music,
   Scissors,
+  Trash2,
   Globe,
   Zap,
 } from "lucide-react";
@@ -28,6 +29,7 @@ import { api } from "../../lib/api";
 import { Skeleton } from "../../components/Skeleton";
 import type { Project } from "../../lib/types";
 import { ClipEditorModal } from "./ClipEditorModal";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 
 function YouTubeIcon({ className }: { className?: string }) {
   return (
@@ -236,7 +238,26 @@ function ClipCard({ clip, project, index, isSelected, onSelect }: ClipCardProps)
   const [musicMood, setMusicMood] = useState<string | null>(clip.music_mood || null);
   const [isRerendering, setIsRerendering] = useState(false);
   const [videoKey, setVideoKey] = useState(0);
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [deleteError, setDeleteError] = useState<string | null>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
+
+  const deleteClip = async () => {
+    setDeleting(true);
+    setDeleteError(null);
+    try {
+      await api.deleteClip(clip.id);
+      setConfirmDelete(false);
+      void queryClient.invalidateQueries({ queryKey: ["clips", project.id] });
+      void queryClient.invalidateQueries({ queryKey: ["project", project.id] });
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "Couldn't delete this clip.");
+    } finally {
+      setDeleting(false);
+    }
+  };
 
   const hasVideo = !!clip.video_file;
   const videoUrl = useMemo(
@@ -563,6 +584,28 @@ function ClipCard({ clip, project, index, isSelected, onSelect }: ClipCardProps)
                 </a>
               </>
             )}
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setConfirmDelete(true);
+              }}
+              aria-label={`Delete clip ${clip.title}`}
+              title="Delete this clip and its files"
+              className="inline-flex items-center rounded-full bg-red-500/10 p-1.5 text-red-400 transition hover:bg-red-500 hover:text-white"
+            >
+              <Trash2 className="size-3" />
+            </button>
+            <ConfirmDialog
+              open={confirmDelete}
+              title="Delete this clip?"
+              message={`“${clip.title}” and its rendered video, thumbnail, captions and SEO pack will be removed from disk.`}
+              confirmLabel="Delete clip"
+              pending={deleting}
+              error={deleteError}
+              onConfirm={() => void deleteClip()}
+              onCancel={() => setConfirmDelete(false)}
+            />
             <span className="text-[11px] text-muted group-hover:text-violet-400 font-medium">
               {isSelected ? "Active" : "Focus →"}
             </span>

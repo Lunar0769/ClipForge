@@ -4,14 +4,14 @@ import logging
 import re
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import FileResponse
 
 from app import repo
 from app.api.deps import Services, get_services
 from app.api.schemas import ClipOut, ClipRenderRequest, ClipUpdateRequest, clip_out
 from app.pipeline.captions import write_clip_ass_file
-from app.pipeline.render import extract_clip_thumbnail, render_clip_video
+from app.pipeline.render import DEFAULT_LAYOUT, extract_clip_thumbnail, plan_layout, render_clip_video
 from app.pipeline.transcript import Transcript
 
 logger = logging.getLogger(__name__)
@@ -167,6 +167,21 @@ def rerender_clip(
     if src is None or not src.exists():
         raise HTTPException(404, "Source video file not found")
 
+    # Options the request leaves out keep the clip's current settings (e.g. changing only the caption
+    # style must not silently drop dubbing, B-roll, filler trimming or the chosen layout).
+    sent = req.model_fields_set
+
+    def keep(name: str, current):
+        return getattr(req, name) if name in sent else current
+
+    subtitle_style = keep("subtitle_style", None) or clip.subtitle_style or "hormozi"
+    auto_zoom = bool(keep("auto_zoom", clip.auto_zoom if clip.auto_zoom is not None else True))
+    music_mood = keep("music_mood", clip.music_mood)
+    broll_enabled = bool(keep("broll_enabled", clip.broll_enabled))
+    target_language = keep("target_language", clip.target_language)
+    requested_layout = keep("layout_mode", None) or clip.layout_mode or DEFAULT_LAYOUT
+    filler_trim = bool(keep("filler_trim", clip.filler_trim))
+
     # Determine trim boundaries and titles
     start_s = req.start_s if req.start_s is not None else clip.start_s
     end_s = req.end_s if req.end_s is not None else clip.end_s
@@ -195,15 +210,15 @@ def rerender_clip(
     # Neural Dubbing & Translation if requested
     dubbed_audio_path = None
     target_words = words
-    if req.target_language:
+    if target_language:
         from app.pipeline.dubbing import DubbingError, generate_dubbed_clip_audio
-        dub_file = clips_dir / f"{clip.id}_dub_{req.target_language}.mp3"
+        dub_file = clips_dir / f"{clip.id}_dub_{target_language}.mp3"
         try:
             dubbed_audio_path, target_words = generate_dubbed_clip_audio(
                 words=words,
                 clip_start_s=start_s,
                 clip_end_s=end_s,
-                target_lang=req.target_language,
+                target_lang=target_language,
                 dst_path=dub_file,
                 engine=svc.engine,
             )
@@ -213,7 +228,7 @@ def rerender_clip(
 
     # Silence & Filler jump-cut trimmer if enabled
     keep_intervals = None
-    if req.filler_trim and target_words:
+    if filler_trim and target_words:
         try:
             from app.pipeline.fillers import detect_silence_and_fillers
             keep_intervals, target_words, time_saved = detect_silence_and_fillers(
@@ -231,13 +246,13 @@ def rerender_clip(
             clip_start_s=start_s,
             clip_end_s=end_s,
             dst_path=ass_dst,
-            style_name=req.subtitle_style,
+            style_name=subtitle_style,
             hook_text=hook_text,
         )
 
     # Prepare B-roll cues if broll_enabled
     active_broll_cues = []
-    if req.broll_enabled:
+    if broll_enabled:
         try:
             from app.pipeline.broll import ensure_broll_media, extract_broll_cues
             cues = extract_broll_cues(start_s, end_s, words=words, keywords=clip.keywords)
@@ -252,7 +267,12 @@ def rerender_clip(
             pass
 
     # Re-render video
-    layout_mode = req.layout_mode if req.layout_mode is not None else (clip.layout_mode or "fit_blur")
+    layout_mode, track, layout_note = plan_layout(
+        src, start_s, end_s, requested_layout, models_dir=svc.settings.models_dir,
+        cache_file=clips_dir / f"{clip.id}.track.json",
+    )
+    if layout_note:
+        logger.info("Clip %s: %s", clip.id, layout_note)
     video_dst.unlink(missing_ok=True)
     render_clip_video(
         src=src,
@@ -260,12 +280,13 @@ def rerender_clip(
         start_s=start_s,
         end_s=end_s,
         ass_file=ass_dst if ass_dst.exists() else None,
-        auto_zoom=req.auto_zoom,
-        music_mood=req.music_mood,
+        auto_zoom=auto_zoom,
+        music_mood=music_mood,
         broll_cues=active_broll_cues,
         dubbed_audio=dubbed_audio_path,
         layout_mode=layout_mode,
         keep_intervals=keep_intervals,
+        track=track,
     )
 
     # Refresh thumbnail
@@ -280,16 +301,16 @@ def rerender_clip(
         clip.id,
         video_file=f"clips/{clip.id}.mp4",
         thumbnail_file=f"clips/{clip.id}.jpg" if thumb_dst.exists() else None,
-        subtitle_style=req.subtitle_style,
-        auto_zoom=req.auto_zoom,
-        music_mood=req.music_mood,
-        broll_enabled=req.broll_enabled,
+        subtitle_style=subtitle_style,
+        auto_zoom=auto_zoom,
+        music_mood=music_mood,
+        broll_enabled=broll_enabled,
         broll_cues=[c.model_dump() for c in active_broll_cues] if active_broll_cues else clip.broll_cues,
-        target_language=req.target_language,
+        target_language=target_language,
         # Turning dubbing off must also forget the old dub, or the UI keeps offering the wrong language.
         dubbed_audio_file=f"clips/{dubbed_audio_path.name}" if dubbed_audio_path and dubbed_audio_path.exists() else None,
         layout_mode=layout_mode,
-        filler_trim=req.filler_trim,
+        filler_trim=filler_trim,
         start_s=start_s,
         end_s=end_s,
         title=title,
@@ -297,3 +318,20 @@ def rerender_clip(
     )
     return clip_out(updated, _seo_data(svc, updated.id, updated.project_id))
 
+
+@router.delete("/clips/{clip_id}", status_code=204)
+def delete_clip(clip_id: str, svc: Services = Depends(get_services)) -> Response:
+    """Delete one clip and every file rendered for it (video, thumbnail, captions, dub, tracking, SEO)."""
+    clip = repo.get_clip(svc.engine, clip_id)
+    if clip is None:
+        raise HTTPException(404, "Clip not found")
+    clips_dir = svc.workspace.projects_dir / clip.project_id / "clips"
+    if clips_dir.exists():
+        for path in clips_dir.glob(f"{clip.id}*"):  # {id}.mp4/.jpg/.ass/.track.json, {id}_dub_xx.mp3
+            if path.is_file():
+                path.unlink(missing_ok=True)
+    project = repo.get_project(svc.engine, clip.project_id)
+    if project is not None and project.video_id:
+        (svc.workspace.videos_dir / project.video_id / f"seo_{clip.id}.json").unlink(missing_ok=True)
+    repo.delete_clip(svc.engine, clip_id)
+    return Response(status_code=204)

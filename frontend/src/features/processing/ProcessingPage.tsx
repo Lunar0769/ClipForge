@@ -1,15 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, useSpring, useTransform } from "motion/react";
 import { useEffect, useState } from "react";
-import { useParams } from "react-router";
-import { Columns2, LayoutGrid, FileText, CheckCircle2 } from "lucide-react";
+import { useNavigate, useParams } from "react-router";
+import { Columns2, LayoutGrid, FileText, CheckCircle2, Trash2 } from "lucide-react";
 import clsx from "clsx";
+import { ConfirmDialog } from "../../components/ConfirmDialog";
 import { NotFound } from "../../components/NotFound";
 import { PageTransition } from "../../components/PageTransition";
 import { Skeleton } from "../../components/Skeleton";
 import { StatusChip } from "../../components/StatusChip";
 import { api } from "../../lib/api";
-import { projectTitle } from "../../lib/format";
+import { formatBytes, projectTitle } from "../../lib/format";
 import { estimateEtaFromBaseline, formatEta, type EtaBaseline, overallProgress, stagesFromJob } from "../../lib/progress";
 import { isTerminal, type JobStatus, type Clip } from "../../lib/types";
 import { useNow } from "../../lib/useNow";
@@ -61,6 +62,16 @@ export default function ProcessingPage() {
     onSuccess: (project) => queryClient.setQueryData(["project", projectId], project),
   });
   const cancel = useMutation({ mutationFn: (jobId: string) => api.cancelJob(jobId) });
+  const navigate = useNavigate();
+  const [confirmDelete, setConfirmDelete] = useState(false);
+  const removeProject = useMutation({
+    mutationFn: () => api.deleteProject(projectId),
+    onSuccess: () => {
+      queryClient.removeQueries({ queryKey: ["project", projectId] });
+      void queryClient.invalidateQueries({ queryKey: ["projects"] });
+      navigate("/");
+    },
+  });
 
   const now = useNow(1000);
   const stages = stagesQuery.data ?? [];
@@ -125,7 +136,29 @@ export default function ProcessingPage() {
                 Cancel
               </button>
             )}
+            <button
+              type="button"
+              onClick={() => setConfirmDelete(true)}
+              aria-label="Delete project"
+              title={project.freeable_bytes ? `Delete project · frees ${formatBytes(project.freeable_bytes)}` : "Delete project"}
+              className="inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-sm text-muted transition hover:border-red-500/50 hover:bg-red-500/10 hover:text-red-400"
+            >
+              <Trash2 className="size-4" aria-hidden="true" />
+              <span className="hidden sm:inline">Delete</span>
+            </button>
           </div>
+          <ConfirmDialog
+            open={confirmDelete}
+            title="Delete this project?"
+            message={`All clips, renders and exports for “${projectTitle(project)}” will be removed${
+              project.freeable_bytes ? `, freeing about ${formatBytes(project.freeable_bytes)}` : ""
+            }. This can't be undone.`}
+            confirmLabel="Delete project"
+            pending={removeProject.isPending}
+            error={removeProject.error?.message ?? null}
+            onConfirm={() => removeProject.mutate()}
+            onCancel={() => setConfirmDelete(false)}
+          />
         </header>
 
         <div className="mt-8">

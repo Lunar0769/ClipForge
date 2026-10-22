@@ -170,3 +170,15 @@ def update_clip(engine: Engine, clip_id: str, **fields) -> Clip:
         s.commit()
         return clip
 
+
+def delete_clip(engine: Engine, clip_id: str) -> None:
+    with _session(engine) as s:
+        clip = s.get(Clip, clip_id)
+        if clip is not None:
+            s.delete(clip)
+            s.commit()
+
+
+def projects_using_video(engine: Engine, video_id: str) -> list[str]:
+    with _session(engine) as s:
+        return list(s.exec(select(Project.id).where(col(Project.video_id) == video_id)))

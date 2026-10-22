@@ -318,6 +318,8 @@ def test_rerender_clip_with_polish(make_client, monkeypatch):
         rendered_calls.append((src, dst, start_s, end_s, kwargs))
         dst.write_bytes(b"rendered mp4")
 
+    # Face tracking is covered by test_tracking; here the source is a dummy file.
+    monkeypatch.setattr("app.api.clips.plan_layout", lambda src, s, e, layout, **kw: ("fit_blur" if layout == "track" else layout, None, None))
     monkeypatch.setattr("app.api.clips.render_clip_video", mock_render)
 
     res = client.post("/api/clips/c1/render", json={
@@ -420,6 +422,8 @@ def test_rerender_clip_with_custom_trim(make_client, monkeypatch):
         rendered_slices.append((start_s, end_s))
         dst.write_bytes(b"rendered mp4")
 
+    # Face tracking is covered by test_tracking; here the source is a dummy file.
+    monkeypatch.setattr("app.api.clips.plan_layout", lambda src, s, e, layout, **kw: ("fit_blur" if layout == "track" else layout, None, None))
     monkeypatch.setattr("app.api.clips.render_clip_video", mock_render)
     monkeypatch.setattr("app.api.clips.extract_clip_thumbnail", lambda **kw: None)
 
@@ -504,3 +508,90 @@ def test_settings_endpoints(make_client, monkeypatch):
     assert "llama3.2" in test_data["message"]
 
 
+
+
+def test_rerender_keeps_options_the_request_leaves_out(make_client, monkeypatch):
+    """Changing only the caption style must not drop music, filler trimming or the chosen layout."""
+    from app.models import Clip
+
+    client = make_client([])
+    engine = client.app.state.services.engine
+    project = client.post("/api/projects", json={"url": "https://youtu.be/a"}).json()
+    repo.update_project(engine, project["id"], video_id="vidkeep")
+    (client.app.state.services.workspace.video("vidkeep").dir / "source.mp4").write_bytes(b"src")
+    repo.replace_clips(engine, project["id"], [Clip(
+        id="ck", project_id=project["id"], rank=0, start_s=0.0, end_s=15.0, title="T", hook_text="H",
+        hook_type="statement", why_viral="W", score=90, music_mood="chill", filler_trim=True,
+        layout_mode="split", auto_zoom=False,
+    )])
+    calls = []
+    # Face tracking is covered by test_tracking; here the source is a dummy file.
+    monkeypatch.setattr("app.api.clips.plan_layout", lambda src, s, e, layout, **kw: ("fit_blur" if layout == "track" else layout, None, None))
+    monkeypatch.setattr("app.api.clips.render_clip_video",
+                        lambda src, dst, start_s, end_s, **kw: calls.append(kw) or dst.write_bytes(b"mp4"))
+
+    data = client.post("/api/clips/ck/render", json={"subtitle_style": "cyber"}).json()
+    assert (data["subtitle_style"], data["music_mood"], data["filler_trim"], data["layout_mode"], data["auto_zoom"]) == \
+        ("cyber", "chill", True, "split", False)
+    assert calls[-1]["layout_mode"] == "split" and calls[-1]["music_mood"] == "chill"
+
+    data = client.post("/api/clips/ck/render", json={"music_mood": None}).json()
+    assert data["music_mood"] is None and data["subtitle_style"] == "cyber"  # explicit null turns music off
+
+
+def test_delete_clip_removes_its_files(make_client):
+    from app.models import Clip
+
+    client = make_client([])
+    svc = client.app.state.services
+    project = client.post("/api/projects", json={"url": "https://youtu.be/a"}).json()
+    repo.update_project(svc.engine, project["id"], video_id="viddel")
+    repo.replace_clips(svc.engine, project["id"], [
+        Clip(id=cid, project_id=project["id"], rank=i, start_s=0, end_s=10, title="T", hook_text="H",
+             hook_type="statement", why_viral="W", score=80) for i, cid in enumerate(["aaa111", "bbb222"])
+    ])
+    clips_dir = svc.workspace.project_dir(project["id"]) / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+    for name in ["aaa111.mp4", "aaa111.jpg", "aaa111.ass", "aaa111.track.json", "aaa111_dub_es.mp3", "bbb222.mp4"]:
+        (clips_dir / name).write_bytes(b"x" * 100)
+    seo = svc.workspace.video("viddel").dir / "seo_aaa111.json"
+    seo.write_text("{}", encoding="utf-8")
+
+    assert client.get(f"/api/projects/{project['id']}").json()["storage_bytes"] >= 600
+    assert client.delete("/api/clips/aaa111").status_code == 204
+    assert sorted(p.name for p in clips_dir.iterdir()) == ["bbb222.mp4"]
+    assert not seo.exists()
+    assert [c["id"] for c in client.get(f"/api/projects/{project['id']}/clips").json()] == ["bbb222"]
+    assert client.delete("/api/clips/aaa111").status_code == 404
+
+
+def test_delete_project_frees_video_cache_only_when_unused(make_client):
+    client = make_client([])
+    svc = client.app.state.services
+    a = client.post("/api/projects", json={"url": "https://youtu.be/a"}).json()["id"]
+    b = client.post("/api/projects", json={"url": "https://youtu.be/a"}).json()["id"]
+    for pid in (a, b):
+        repo.update_project(svc.engine, pid, video_id="shared")
+    cache = svc.workspace.video("shared").dir
+    (cache / "source.mp4").write_bytes(b"video")
+
+    assert client.delete(f"/api/projects/{a}").status_code == 204
+    assert (cache / "source.mp4").exists()  # project b still uses this video
+    assert client.delete(f"/api/projects/{b}").status_code == 204
+    assert not cache.exists()
+
+
+def test_storage_accounts_for_shared_video_cache(make_client):
+    client = make_client([])
+    svc = client.app.state.services
+    ids = [client.post("/api/projects", json={"url": "https://youtu.be/a"}).json()["id"] for _ in range(2)]
+    for pid in ids:
+        repo.update_project(svc.engine, pid, video_id="sharedvid")
+        (svc.workspace.project_dir(pid) / "clip.mp4").write_bytes(b"x" * 1000)
+    (svc.workspace.video("sharedvid").dir / "source.mp4").write_bytes(b"x" * 5000)
+
+    p = client.get(f"/api/projects/{ids[0]}").json()
+    assert (p["project_bytes"], p["cache_bytes"], p["storage_bytes"]) == (1000, 5000, 6000)
+    assert p["freeable_bytes"] == 1000  # the other project still needs the source video
+    client.delete(f"/api/projects/{ids[1]}")
+    assert client.get(f"/api/projects/{ids[0]}").json()["freeable_bytes"] == 6000
