@@ -17,7 +17,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { api } from "../lib/api";
 import type { AppSettings, SystemInfo } from "../lib/types";
 
@@ -56,6 +56,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
 
   // Provider test state
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
+  const testResultRef = useRef<HTMLDivElement>(null);
   const [testResult, setTestResult] = useState<{
     provider: string;
     ok: boolean;
@@ -68,6 +69,11 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [loadingSystem, setLoadingSystem] = useState(false);
 
   // Fetch settings on open
+  // The result renders below the whole provider list; bring it into view next to where the user clicked.
+  useEffect(() => {
+    if (testResult) testResultRef.current?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+  }, [testResult]);
+
   useEffect(() => {
     if (!isOpen) return;
     setLoading(true);
@@ -291,9 +297,9 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     </label>
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
                       {[
-                        { id: "gemini", name: "Google Gemini", sub: "Gemini 2.5/Flash" },
-                        { id: "openai", name: "OpenAI", sub: "GPT-4o Mini" },
-                        { id: "anthropic", name: "Anthropic", sub: "Claude 3.5 Haiku" },
+                        { id: "gemini", name: "Google Gemini", sub: "Gemini 3.5 Flash" },
+                        { id: "openai", name: "OpenAI", sub: "GPT-5 mini" },
+                        { id: "anthropic", name: "Anthropic", sub: "Claude Opus 5.5" },
                         { id: "ollama", name: "Ollama (Local)", sub: "Self-hosted LLM" },
                       ].map((item) => {
                         const active = provider === item.id;
@@ -555,6 +561,8 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                     {/* Provider Test Result Toast */}
                     {testResult && (
                       <div
+                        ref={testResultRef}
+                        role="status"
                         className={`flex items-start gap-2.5 rounded-xl border p-3.5 text-xs animate-in fade-in ${
                           testResult.ok
                             ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-300"
