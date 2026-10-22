@@ -273,6 +273,8 @@ def generate_json(
 def apply_stored_keys_to_env(engine: Engine) -> None:
     """Make keys saved in Settings visible to code that reads the environment (B-roll, dubbing) after a restart."""
     stored = _stored(engine)
-    for stored_key, env_key in [*_SECRETS.values(), ("pexels_api_key", "PEXELS_API_KEY"), ("provider", "CLIPFORGE_LLM_PROVIDER")]:
+    extra = [("pexels_api_key", "PEXELS_API_KEY"), ("pixabay_api_key", "PIXABAY_API_KEY"),
+             ("provider", "CLIPFORGE_LLM_PROVIDER")]
+    for stored_key, env_key in [*_SECRETS.values(), *extra]:
         if stored.get(stored_key):
             os.environ[env_key] = str(stored[stored_key])

@@ -1,7 +1,7 @@
 """AI B-Roll Cutaway & Stock Footage Engine (Phase 6.4).
 
 Detects visual inflection moments in short-form clips, retrieves contextually
-relevant 9:16 vertical video cutaways via Pexels Video API (when configured),
+relevant stock video cutaways via Pexels or Pixabay (whichever has a key),
 or generates zero-dependency procedural motion graphics locally via FFmpeg.
 Composites cutaways beneath kinetic subtitles while preserving voice audio.
 """
@@ -49,7 +49,7 @@ class BRollCue(BaseModel):
     start_s: float = Field(description="Start time relative to the clip start in seconds")
     end_s: float = Field(description="End time relative to the clip start in seconds")
     keyword: str = Field(description="Visual search keyword or concept")
-    source: str = Field(default="procedural", description="'pexels' or 'procedural'")
+    source: str = Field(default="procedural", description="'pexels', 'pixabay' or 'procedural'")
     video_path: str | None = Field(default=None, description="Path to rendered/downloaded B-roll file")
 
 
@@ -124,6 +124,45 @@ def _slugify(text: str) -> str:
     return cleaned[:30] or "broll"
 
 
+def _search_pexels(keyword: str, key: str) -> str | None:
+    resp = httpx.get(
+        "https://api.pexels.com/videos/search",
+        params={"query": keyword, "orientation": "portrait", "per_page": 1},
+        headers={"Authorization": key},
+        timeout=10.0,
+    )
+    resp.raise_for_status()
+    videos = resp.json().get("videos", [])
+    if not videos:
+        return None
+    files = videos[0].get("video_files", [])
+    vertical = [f for f in files if (f.get("width") or 0) <= (f.get("height") or 0)]
+    target = (vertical or files or [{}])[0]
+    return target.get("link")
+
+
+def _search_pixabay(keyword: str, key: str) -> str | None:
+    """Pixabay has no orientation filter, so pick the tallest result; the renderer center-crops to 9:16."""
+    resp = httpx.get(
+        "https://pixabay.com/api/videos/",
+        params={"key": key, "q": keyword, "per_page": 10, "safesearch": "true"},
+        timeout=10.0,
+    )
+    if resp.status_code != 200:  # not raise_for_status(): its message would carry the key-bearing URL into logs
+        raise RuntimeError(f"Pixabay returned HTTP {resp.status_code}")
+    best: tuple[float, str] | None = None
+    for hit in resp.json().get("hits", []):
+        sizes = hit.get("videos") or {}
+        # "medium" is ~1280-1920px: sharp enough after the 9:16 crop, far smaller than "large"
+        f = next((sizes[s] for s in ("medium", "large", "small") if (sizes.get(s) or {}).get("url")), None)
+        if not f:
+            continue
+        ratio = (f.get("height") or 0) / max(f.get("width") or 1, 1)
+        if best is None or ratio > best[0]:
+            best = (ratio, f["url"])
+    return best[1] if best else None
+
+
 def ensure_broll_media(
     cue: BRollCue,
     cache_dir: Path,
@@ -141,35 +180,24 @@ def ensure_broll_media(
         cue.video_path = str(cached_path)
         return cached_path
 
-    # 2. Try Pexels Video API if key configured
-    pexels_key = os.environ.get("PEXELS_API_KEY")
-    if pexels_key:
+    # 2. Stock footage from whichever provider has a key (Pexels first, then Pixabay)
+    for name, search in (("pexels", _search_pexels), ("pixabay", _search_pixabay)):
+        key = os.environ.get(f"{name.upper()}_API_KEY")
+        if not key:
+            continue
         try:
-            logger.info("Searching Pexels for B-roll: %s", cue.keyword)
-            resp = httpx.get(
-                "https://api.pexels.com/videos/search",
-                params={"query": cue.keyword, "orientation": "portrait", "per_page": 1},
-                headers={"Authorization": pexels_key},
-                timeout=10.0,
-            )
-            if resp.status_code == 200:
-                data = resp.json()
-                videos = data.get("videos", [])
-                if videos:
-                    video_files = videos[0].get("video_files", [])
-                    # Pick 1080x1920 or highest vertical file
-                    vertical_files = [f for f in video_files if (f.get("width") or 0) <= (f.get("height") or 0)]
-                    target = vertical_files[0] if vertical_files else video_files[0]
-                    link = target.get("link")
-                    if link:
-                        v_resp = httpx.get(link, timeout=25.0)
-                        if v_resp.status_code == 200:
-                            cached_path.write_bytes(v_resp.content)
-                            cue.source = "pexels"
-                            cue.video_path = str(cached_path)
-                            return cached_path
+            link = search(cue.keyword, key)
+            if not link:
+                logger.info("No %s B-roll found for '%s'", name, cue.keyword)
+                continue
+            v_resp = httpx.get(link, timeout=30.0, follow_redirects=True)
+            v_resp.raise_for_status()
+            cached_path.write_bytes(v_resp.content)
+            cue.source = name
+            cue.video_path = str(cached_path)
+            return cached_path
         except Exception as e:
-            logger.warning("Pexels fetch failed for '%s': %s (falling back to procedural)", cue.keyword, e)
+            logger.warning("%s fetch failed for '%s': %s", name.capitalize(), cue.keyword, e)
 
     # 3. Procedural Generative Fallback via FFmpeg (Ultra-fast, zero-dependency, local)
     ffmpeg = _tool("ffmpeg")

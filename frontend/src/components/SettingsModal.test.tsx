@@ -22,6 +22,7 @@ describe("SettingsModal", () => {
       openai_key_set: false,
       anthropic_key_set: false,
       pexels_key_set: false,
+      pixabay_key_set: false,
       ollama_host: "http://localhost:11434",
       default_subtitle_style: "hormozi",
       default_auto_zoom: true,
@@ -68,6 +69,19 @@ describe("SettingsModal", () => {
       expect(screen.getByText(/nvidia geforce rtx 4070/i)).toBeInTheDocument();
       expect(screen.getByText(/12 gb vram/i)).toBeInTheDocument();
     });
+  });
+
+  it("saves a Pixabay key for stock B-roll", async () => {
+    vi.mocked(api.updateSettings).mockImplementation(async (body) => ({
+      ...(await api.getSettings()), pixabay_key_set: !!body.pixabay_api_key,
+    }));
+    const user = userEvent.setup();
+    render(<SettingsModal isOpen={true} onClose={vi.fn()} />);
+    const input = await screen.findByPlaceholderText(/pixabay api key/i);
+    await user.type(input, "pix-123");
+    await user.click(screen.getByRole("button", { name: /save/i }));
+    await waitFor(() => expect(api.updateSettings).toHaveBeenCalledWith(
+      expect.objectContaining({ pixabay_api_key: "pix-123" })));
   });
 
   it("triggers provider test and displays status", async () => {

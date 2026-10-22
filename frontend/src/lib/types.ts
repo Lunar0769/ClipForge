@@ -73,6 +73,7 @@ export interface AppSettings {
   openai_key_set: boolean;
   anthropic_key_set: boolean;
   pexels_key_set: boolean;
+  pixabay_key_set: boolean;
   ollama_host: string | null;
   default_subtitle_style: string;
   default_auto_zoom: boolean;

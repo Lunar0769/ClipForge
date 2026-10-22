@@ -22,7 +22,7 @@ An open-source, local-first alternative to Opus Clip.
 ---
 
 > [!NOTE]
-> **v1.0.0 is out.** Every flow below has been verified end-to-end on real videos. See the [changelog](CHANGELOG.md) for what's new.
+> **v1.0 is out.** Every flow below has been verified end-to-end on real videos. See the [changelog](CHANGELOG.md) for what's new.
 
 ## ✨ Why ClipForge
 
@@ -101,7 +101,7 @@ Then open **Settings**, add at least one LLM key (Gemini has a free tier), paste
 |---|---|
 | `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `OPENAI_API_KEY` | Moment detection, titles, SEO (one is required, or use Ollama) |
 | `HF_TOKEN` | Speaker diarization for podcasts (planned) |
-| `PEXELS_API_KEY` / `PIXABAY_API_KEY` | AI B-roll |
+| `PIXABAY_API_KEY` (free, recommended) / `PEXELS_API_KEY` | Stock B-roll cutaways. New Pexels keys are paused; get a Pixabay key at [pixabay.com/api/docs](https://pixabay.com/api/docs/) |
 | `ELEVENLABS_API_KEY` | Premium dubbing (free Edge-TTS otherwise) |
 
 Missing optional keys simply disable that feature — jobs never fail because of them.
@@ -132,7 +132,7 @@ Every project card shows how much disk it uses, and the home page shows the tota
 - [x] **Phase 6.1 — Retention Polish:** 1.08x auto-zoom punch-ins & harmonic procedural audio beds (Chill, Energetic, Suspense)
 - [x] **Phase 6.2 — Studio Timeline & Trimmer:** Dual-handle video scrubber, custom start/end trim editor, live hook text re-rendering
 - [x] **Phase 6.3 — Settings & Multi-Provider Hub:** Hot-swappable AI keys (Gemini, OpenAI, Anthropic, Ollama), live ping tests, hardware acceleration status
-- [x] **Phase 6.4 — AI B-Roll & Visual Cutaways:** Contextual keyword cue detection, Pexels API integration, procedural motion sweeps fallback, composited beneath subtitles
+- [x] **Phase 6.4 — AI B-Roll & Visual Cutaways:** Contextual keyword cue detection, Pixabay / Pexels stock video, procedural motion sweeps fallback, composited beneath subtitles
 - [x] **Phase 6.5 — Multilingual Dubbing & Audio Polish:** Edge-TTS neural speech synthesis (ES, DE, FR, HI, JA, PT, IT), time-aligned audio ducking mix, and translated kinetic subtitles
 - [x] **Phase 7 — Smart 9:16 Multi-Layout Reframe Engine:** Fit+Blur backdrop, Speaker Track full-bleed crop, Split Screen 50/50 dual stack, and Gaming Cam (facecam top + gameplay screen)
 - [x] **Phase 8 — AI Filler Word & Silence Jump-Cut Trimmer:** Vocal disfluency removal ("um", "uh", "ah"), dead-air pause compression (>0.75s to 0.15s), synchronized subtitle timestamp re-alignment, and fast-paced studio toggle

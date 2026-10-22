@@ -1,3 +1,4 @@
+import os
 import time
 
 import pytest
@@ -506,6 +507,33 @@ def test_settings_endpoints(make_client, monkeypatch):
     test_data = res_test.json()
     assert test_data["ok"] is True
     assert "llama3.2" in test_data["message"]
+
+
+def test_pixabay_key_save_and_test(make_client, monkeypatch):
+    monkeypatch.delenv("PIXABAY_API_KEY", raising=False)
+    client = make_client([])
+    assert client.get("/api/settings").json()["pixabay_key_set"] is False
+    assert client.put("/api/settings", json={"pixabay_api_key": " pix123 "}).json()["pixabay_key_set"] is True
+    assert os.environ["PIXABAY_API_KEY"] == "pix123"
+
+    seen = {}
+
+    class Resp:
+        status_code = 400
+
+    def fake_get(url, **kwargs):
+        seen.update(kwargs["params"])
+        return Resp()
+
+    monkeypatch.setattr("httpx.get", fake_get)
+    res = client.post("/api/settings/test", json={"provider": "pixabay"}).json()
+    assert seen["key"] == "pix123"
+    assert res["ok"] is False and "rejected" in res["message"] and "pix123" not in res["message"]
+    Resp.status_code = 200
+    assert client.post("/api/settings/test", json={"provider": "pixabay"}).json()["ok"] is True
+
+    assert client.put("/api/settings", json={"pixabay_api_key": ""}).json()["pixabay_key_set"] is False
+    assert "PIXABAY_API_KEY" not in os.environ
 
 
 

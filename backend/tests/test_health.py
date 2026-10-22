@@ -7,4 +7,4 @@ def test_health_returns_ok_and_version(settings):
     with TestClient(create_app(settings)) as client:
         response = client.get("/api/health")
     assert response.status_code == 200
-    assert response.json() == {"status": "ok", "version": "1.0.0"}
+    assert response.json() == {"status": "ok", "version": "1.0.1"}

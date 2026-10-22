@@ -42,6 +42,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [openaiKey, setOpenaiKey] = useState("");
   const [anthropicKey, setAnthropicKey] = useState("");
   const [pexelsKey, setPexelsKey] = useState("");
+  const [pixabayKey, setPixabayKey] = useState("");
   const [ollamaHost, setOllamaHost] = useState("http://localhost:11434");
   const [subtitleStyle, setSubtitleStyle] = useState("hormozi");
   const [autoZoom, setAutoZoom] = useState(true);
@@ -53,6 +54,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
   const [showOpenai, setShowOpenai] = useState(false);
   const [showAnthropic, setShowAnthropic] = useState(false);
   const [showPexels, setShowPexels] = useState(false);
+  const [showPixabay, setShowPixabay] = useState(false);
 
   // Provider test state
   const [testingProvider, setTestingProvider] = useState<string | null>(null);
@@ -131,6 +133,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
         openai_api_key: openaiKey.trim() || undefined,
         anthropic_api_key: anthropicKey.trim() || undefined,
         pexels_api_key: pexelsKey.trim() || undefined,
+        pixabay_api_key: pixabayKey.trim() || undefined,
         ollama_host: ollamaHost.trim() || undefined,
         default_subtitle_style: subtitleStyle,
         default_auto_zoom: autoZoom,
@@ -143,6 +146,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
       setOpenaiKey("");
       setAnthropicKey("");
       setPexelsKey("");
+      setPixabayKey("");
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: unknown) {
@@ -162,6 +166,7 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
     if (targetProvider === "openai") keyToSend = openaiKey.trim() || undefined;
     if (targetProvider === "anthropic") keyToSend = anthropicKey.trim() || undefined;
     if (targetProvider === "pexels") keyToSend = pexelsKey.trim() || undefined;
+    if (targetProvider === "pixabay") keyToSend = pixabayKey.trim() || undefined;
 
     try {
       const res = await api.testProvider({
@@ -521,7 +526,58 @@ export function SettingsModal({ isOpen, onClose }: SettingsModalProps) {
                         </button>
                       </div>
                       <p className="text-[10px] text-muted">
-                        Powers automatic 9:16 vertical stock cutaways. Zero-dependency procedural motion sweeps will be used if omitted.
+                        Powers automatic 9:16 stock cutaways. New Pexels keys are paused; Pixabay below works the same way. Without either, animated gradient cutaways are used.
+                      </p>
+                    </div>
+
+                    {/* Pixabay Video API */}
+                    <div className="p-4 rounded-2xl border border-border/70 bg-surface-2/30 space-y-2.5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Film className="size-3.5 text-emerald-400" />
+                          <span className="text-xs font-semibold text-fg">Pixabay Stock Video API Key</span>
+                          {settings?.pixabay_key_set ? (
+                            <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-300">
+                              <Check className="size-2.5" /> Key Saved
+                            </span>
+                          ) : (
+                            <span className="rounded-full bg-surface-3 px-2 py-0.5 text-[10px] text-muted">
+                              Optional (Procedural fallback enabled)
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          disabled={testingProvider === "pixabay"}
+                          onClick={() => handleTestProvider("pixabay")}
+                          className="flex items-center gap-1.5 rounded-lg border border-border/80 bg-surface-3 px-2.5 py-1 text-[11px] font-medium text-fg hover:bg-surface-2 transition disabled:opacity-50"
+                        >
+                          {testingProvider === "pixabay" ? (
+                            <Loader2 className="size-3 animate-spin text-violet-brand" />
+                          ) : (
+                            <Radio className="size-3 text-cyan-400" />
+                          )}
+                          Test Ping
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <input
+                          type={showPixabay ? "text" : "password"}
+                          placeholder={settings?.pixabay_key_set ? "••••••••••••••••••••••••" : "Pixabay API Key (free: sign up, then pixabay.com/api/docs)"}
+                          value={pixabayKey}
+                          onChange={(e) => setPixabayKey(e.target.value)}
+                          className="w-full rounded-xl border border-border/80 bg-surface-1 px-3 py-2 pr-9 text-xs font-mono text-fg placeholder:text-muted/50 focus:border-violet-brand focus:outline-none"
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPixabay(!showPixabay)}
+                          className="absolute right-2.5 top-1/2 -translate-y-1/2 text-muted hover:text-fg"
+                        >
+                          {showPixabay ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+                        </button>
+                      </div>
+                      <p className="text-[10px] text-muted">
+                        Free key, no attribution needed. Used when Pexels has no key or no match.
                       </p>
                     </div>
 

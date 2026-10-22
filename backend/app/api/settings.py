@@ -19,6 +19,7 @@ class SettingsOut(BaseModel):
     openai_key_set: bool = False
     anthropic_key_set: bool = False
     pexels_key_set: bool = False
+    pixabay_key_set: bool = False
     ollama_host: str | None = None
     default_subtitle_style: str = "hormozi"
     default_auto_zoom: bool = True
@@ -32,6 +33,7 @@ class SettingsUpdate(BaseModel):
     openai_api_key: str | None = None
     anthropic_api_key: str | None = None
     pexels_api_key: str | None = None
+    pixabay_api_key: str | None = None
     ollama_host: str | None = None
     default_subtitle_style: str | None = None
     default_auto_zoom: bool | None = None
@@ -64,6 +66,7 @@ def get_settings(svc: Services = Depends(get_services)) -> SettingsOut:
     openai_key = stored.get("openai_api_key") or os.environ.get("OPENAI_API_KEY")
     anthropic_key = stored.get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY")
     pexels_key = stored.get("pexels_api_key") or os.environ.get("PEXELS_API_KEY")
+    pixabay_key = stored.get("pixabay_api_key") or os.environ.get("PIXABAY_API_KEY")
     ollama_host = stored.get("ollama_host") or os.environ.get("OLLAMA_HOST")
 
     return SettingsOut(
@@ -72,6 +75,7 @@ def get_settings(svc: Services = Depends(get_services)) -> SettingsOut:
         openai_key_set=bool(openai_key),
         anthropic_key_set=bool(anthropic_key),
         pexels_key_set=bool(pexels_key),
+        pixabay_key_set=bool(pixabay_key),
         ollama_host=ollama_host,
         default_subtitle_style=stored.get("default_subtitle_style", "hormozi"),
         default_auto_zoom=stored.get("default_auto_zoom", True),
@@ -123,6 +127,15 @@ def update_settings(req: SettingsUpdate, svc: Services = Depends(get_services)) 
             stored.pop("pexels_api_key", None)
             os.environ.pop("PEXELS_API_KEY", None)
 
+    if req.pixabay_api_key is not None:
+        key = req.pixabay_api_key.strip()
+        if key:
+            stored["pixabay_api_key"] = key
+            os.environ["PIXABAY_API_KEY"] = key
+        else:
+            stored.pop("pixabay_api_key", None)
+            os.environ.pop("PIXABAY_API_KEY", None)
+
     if req.ollama_host is not None:
         host = req.ollama_host.strip()
         if host:
@@ -164,6 +177,21 @@ def test_provider(req: ProviderTestRequest, svc: Services = Depends(get_services
             return ProviderTestResponse(ok=False, message=f"Pexels returned HTTP {resp.status_code}")
         except Exception as e:
             return ProviderTestResponse(ok=False, message=f"Pexels connection error: {e}")
+    if provider == "pixabay":
+        key = req.api_key or stored.get("pixabay_api_key") or os.environ.get("PIXABAY_API_KEY")
+        if not key:
+            raise HTTPException(400, "Pixabay API key is required")
+        import httpx
+        try:
+            resp = httpx.get("https://pixabay.com/api/videos/", params={"key": key, "q": "city", "per_page": 3},
+                             timeout=10)
+        except httpx.HTTPError as e:
+            return ProviderTestResponse(ok=False, message=f"Couldn't reach Pixabay ({type(e).__name__})")
+        if resp.status_code == 200:
+            return ProviderTestResponse(ok=True, message="Connected to Pixabay. Stock B-roll is ready.")
+        if resp.status_code in (400, 401, 403):
+            return ProviderTestResponse(ok=False, message="Pixabay rejected this key. Copy it again from pixabay.com/api/docs.")
+        return ProviderTestResponse(ok=False, message=f"Pixabay returned HTTP {resp.status_code}")
 
     raise HTTPException(400, f"Unsupported provider: {provider}")
 

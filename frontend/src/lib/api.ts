@@ -132,6 +132,7 @@ export const api = {
     openai_api_key?: string | null;
     anthropic_api_key?: string | null;
     pexels_api_key?: string | null;
+    pixabay_api_key?: string | null;
     ollama_host?: string | null;
     default_subtitle_style?: string | null;
     default_auto_zoom?: boolean | null;
