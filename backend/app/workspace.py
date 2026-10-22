@@ -55,6 +55,10 @@ class Workspace:
     def remove_project(self, project_id: str) -> None:
         shutil.rmtree(self.projects_dir / project_id, ignore_errors=True)
 
+    def remove_video(self, video_id: str) -> None:
+        """Drop the shared source/audio/transcript cache (only when no project uses it any more)."""
+        shutil.rmtree(self.videos_dir / video_id, ignore_errors=True)
+
 
 def atomic_write_json(path: Path, data: BaseModel | dict | list) -> None:
     if isinstance(data, BaseModel):
@@ -68,3 +72,10 @@ def atomic_write_json(path: Path, data: BaseModel | dict | list) -> None:
 
 def read_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+def dir_size(path: Path) -> int:
+    """Total bytes of the files under `path` (0 if it doesn't exist)."""
+    if not path.exists():
+        return 0
+    return sum(f.stat().st_size for f in path.rglob("*") if f.is_file())

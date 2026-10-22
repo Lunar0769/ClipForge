@@ -5,6 +5,7 @@ from pydantic import BaseModel, ConfigDict, field_validator
 from sqlalchemy import Engine
 
 from app import repo
+from app.workspace import Workspace, dir_size
 from app.models import Clip, JobStatus, Project, SourceType
 
 
@@ -41,6 +42,10 @@ class ProjectOut(BaseModel):
     video_id: str | None
     duration_s: float | None
     latest_job: JobOut | None = None
+    storage_bytes: int = 0   # this project's files + its source video cache
+    project_bytes: int = 0   # clips, renders, exports owned only by this project
+    cache_bytes: int = 0     # downloaded source/audio/transcript (shared by projects of the same video)
+    freeable_bytes: int = 0  # what deleting this project actually frees
 
     utc_created = field_validator("created_at")(_as_utc)
 
@@ -90,7 +95,7 @@ class ClipOut(BaseModel):
     broll_cues: list[dict[str, Any]] | None = None
     target_language: str | None = None
     dubbed_audio_file: str | None = None
-    layout_mode: str | None = "fit_blur"
+    layout_mode: str | None = "track"
     filler_trim: bool | None = False
     seo: SeoPack | None = None
     created_at: datetime
@@ -100,13 +105,15 @@ class ClipOut(BaseModel):
 
 
 class ClipRenderRequest(BaseModel):
-    subtitle_style: str = "hormozi"
-    auto_zoom: bool = True
+    """Options left out of the request keep the clip's current value (send null to turn music/dubbing off)."""
+
+    subtitle_style: str | None = None
+    auto_zoom: bool | None = None
     music_mood: str | None = None
-    broll_enabled: bool = False
+    broll_enabled: bool | None = None
     target_language: str | None = None
-    layout_mode: str = "fit_blur"
-    filler_trim: bool = False
+    layout_mode: str | None = None
+    filler_trim: bool | None = None
     start_s: float | None = None
     end_s: float | None = None
     title: str | None = None
@@ -139,8 +146,14 @@ def clip_out(clip: Clip, seo_data: dict[str, Any] | None = None) -> ClipOut:
     return out
 
 
-def project_out(engine: Engine, project: Project) -> ProjectOut:
+def project_out(engine: Engine, project: Project, workspace: "Workspace | None" = None) -> ProjectOut:
     job = repo.latest_job(engine, project.id)
     out = ProjectOut.model_validate(project)
     out.latest_job = JobOut.model_validate(job) if job else None
+    if workspace is not None:
+        out.project_bytes = dir_size(workspace.projects_dir / project.id)
+        out.cache_bytes = dir_size(workspace.videos_dir / project.video_id) if project.video_id else 0
+        out.storage_bytes = out.project_bytes + out.cache_bytes
+        shared = project.video_id and len(repo.projects_using_video(engine, project.video_id)) > 1
+        out.freeable_bytes = out.project_bytes + (0 if shared else out.cache_bytes)
     return out

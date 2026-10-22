@@ -21,3 +21,11 @@ def system_info() -> dict:
         "ffmpeg": shutil.which("ffmpeg") is not None,
         "nvenc": ffmpeg_has_nvenc(),
     }
+
+
+@router.get("/system/update")
+def update_check() -> dict:
+    """Is a newer ClipForge tagged on GitHub? (cached for hours; quietly null when offline)"""
+    from app.updates import update_status
+
+    return update_status(__version__)

@@ -9,20 +9,20 @@ An open-source, local-first alternative to Opus Clip.
 
 <br/>
 
-![Status](https://img.shields.io/badge/status-in%20active%20development-8b5cf6?style=for-the-badge)
+[![Release](https://img.shields.io/github/v/tag/Lunar0769/ClipForge?label=release&style=for-the-badge&color=8b5cf6)](https://github.com/Lunar0769/ClipForge/releases)
 ![Python](https://img.shields.io/badge/python-3.13-3776AB?style=for-the-badge&logo=python&logoColor=white)
 ![React](https://img.shields.io/badge/react-19-149ECA?style=for-the-badge&logo=react&logoColor=white)
 ![FFmpeg](https://img.shields.io/badge/ffmpeg-NVENC-007808?style=for-the-badge&logo=ffmpeg&logoColor=white)
 ![License](https://img.shields.io/badge/license-MIT-22d3ee?style=for-the-badge)
 
-[Features](#-features) · [How it works](#-how-it-works) · [Quick start](#-quick-start) · [Roadmap](#-roadmap) · [Tech stack](#-tech-stack)
+[Features](#-features) · [How it works](#-how-it-works) · [Quick start](#-quick-start) · [Updating](#-updating) · [Roadmap](#-roadmap) · [Tech stack](#-tech-stack)
 
 </div>
 
 ---
 
 > [!NOTE]
-> ClipForge is being built in public. The [design spec](docs/superpowers/specs/2026-10-03-shorts-generator-design.md) is complete; features land phase by phase — see the [roadmap](#-roadmap) for what works today.
+> **v1.0.0 is out.** Every flow below has been verified end-to-end on real videos. See the [changelog](CHANGELOG.md) for what's new.
 
 ## ✨ Why ClipForge
 
@@ -100,12 +100,27 @@ Then open **Settings**, add at least one LLM key (Gemini has a free tier), paste
 | Key | Unlocks |
 |---|---|
 | `ANTHROPIC_API_KEY` / `GEMINI_API_KEY` / `OPENAI_API_KEY` | Moment detection, titles, SEO (one is required, or use Ollama) |
-| `HF_TOKEN` | Speaker diarization for podcasts |
+| `HF_TOKEN` | Speaker diarization for podcasts (planned) |
 | `PEXELS_API_KEY` / `PIXABAY_API_KEY` | AI B-roll |
 | `ELEVENLABS_API_KEY` | Premium dubbing (free Edge-TTS otherwise) |
 
 Missing optional keys simply disable that feature — jobs never fail because of them.
 </details>
+
+## 🔄 Updating
+
+ClipForge checks GitHub for new releases. When one is out, a **"vX.Y.Z available"** badge appears in the top bar. To update:
+
+```powershell
+./scripts/update.ps1       # pulls the latest code, syncs Python + UI deps, fetches new models
+./scripts/dev.ps1
+```
+
+Your projects, clips and API keys live in `workspace/` and are never touched by an update.
+
+## 🧹 Storage
+
+Every project card shows how much disk it uses, and the home page shows the total. You can delete a single clip from the gallery, or a whole project from its card or project page. The confirmation tells you exactly how much space will be freed. A downloaded source video shared by several projects is kept until the last of them is deleted.
 
 ## 🗺️ Roadmap
 
@@ -121,6 +136,9 @@ Missing optional keys simply disable that feature — jobs never fail because of
 - [x] **Phase 6.5 — Multilingual Dubbing & Audio Polish:** Edge-TTS neural speech synthesis (ES, DE, FR, HI, JA, PT, IT), time-aligned audio ducking mix, and translated kinetic subtitles
 - [x] **Phase 7 — Smart 9:16 Multi-Layout Reframe Engine:** Fit+Blur backdrop, Speaker Track full-bleed crop, Split Screen 50/50 dual stack, and Gaming Cam (facecam top + gameplay screen)
 - [x] **Phase 8 — AI Filler Word & Silence Jump-Cut Trimmer:** Vocal disfluency removal ("um", "uh", "ah"), dead-air pause compression (>0.75s to 0.15s), synchronized subtitle timestamp re-alignment, and fast-paced studio toggle
+- [x] **v1.0 — Speaker Track face tracking:** MediaPipe face detection, shot-cut aware camera path with deadzone + easing, per-frame crop; falls back to Fit+Blur when no face is found
+- [x] **v1.0 — Storage cleanup & updates:** per-project disk usage, delete clip / delete project, in-app update notice and `update.ps1`
+- [ ] **Next:** speaker diarization for multi-person podcasts, faster tracking
 
 ## 🧰 Tech stack
 

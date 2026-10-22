@@ -46,6 +46,9 @@ def download_models(settings: Settings) -> int:
     print(f"Downloading Whisper '{settings.whisper_model}' into {target} …")
     path = download_model(settings.whisper_model, cache_dir=str(target))
     print(f"Whisper model ready at {path}")
+    from app.pipeline.reframe.tracking import ensure_model
+
+    print(f"Face tracking model ready at {ensure_model(settings.models_dir)}")
     return 0
 
 

@@ -24,6 +24,10 @@ export interface Project {
   video_id: string | null;
   duration_s: number | null;
   latest_job: Job | null;
+  storage_bytes?: number;
+  project_bytes?: number;
+  cache_bytes?: number;
+  freeable_bytes?: number;
 }
 
 export interface StageInfo {

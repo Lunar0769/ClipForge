@@ -32,7 +32,7 @@ def _get_project_or_404(svc: Services, project_id: str) -> Project:
 def _start_job(svc: Services, project: Project) -> ProjectOut:
     job = repo.create_job(svc.engine, project.id)
     svc.queue.submit(job.id)
-    return project_out(svc.engine, project)
+    return project_out(svc.engine, project, svc.workspace)
 
 
 def _save_upload(src: BinaryIO, dest: Path) -> None:
@@ -74,12 +74,12 @@ async def create_from_upload(file: UploadFile, svc: Services = Depends(get_servi
 
 @router.get("/projects", response_model=list[ProjectOut])
 def list_projects(svc: Services = Depends(get_services)) -> list[ProjectOut]:
-    return [project_out(svc.engine, p) for p in repo.list_projects(svc.engine)]
+    return [project_out(svc.engine, p, svc.workspace) for p in repo.list_projects(svc.engine)]
 
 
 @router.get("/projects/{project_id}", response_model=ProjectOut)
 def get_project(project_id: str, svc: Services = Depends(get_services)) -> ProjectOut:
-    return project_out(svc.engine, _get_project_or_404(svc, project_id))
+    return project_out(svc.engine, _get_project_or_404(svc, project_id), svc.workspace)
 
 
 @router.delete("/projects/{project_id}", status_code=204)
@@ -89,8 +89,13 @@ def delete_project(project_id: str, svc: Services = Depends(get_services)) -> Re
     if job is not None:
         svc.queue.cancel(job.id)
         svc.bus.forget(job.id)
+    project = repo.get_project(svc.engine, project_id)
     repo.delete_project(svc.engine, project_id)
     svc.workspace.remove_project(project_id)
+    # The downloaded source, audio and transcript are shared by every project made from the same video;
+    # free them once the last such project is gone.
+    if project is not None and project.video_id and not repo.projects_using_video(svc.engine, project.video_id):
+        svc.workspace.remove_video(project.video_id)
     return Response(status_code=204)
 
 
@@ -183,10 +188,10 @@ def export_project_zip(
             if seo_data:
                 seo_txt = (
                     f"TITLE (YouTube):\n{seo_data.get('youtube_title', clip.title)}\n\n"
-                    f"DESCRIPTION (YouTube):\n{seo_data.get('youtube_description', '')}\n\n"
+                    f"DESCRIPTION (YouTube):\n{seo_data.get('youtube_description') or seo_data.get('youtube_caption', '')}\n\n"
                     f"TIKTOK CAPTION:\n{seo_data.get('tiktok_caption', '')}\n\n"
                     f"INSTAGRAM REELS CAPTION:\n{seo_data.get('reels_caption', '')}\n\n"
-                    f"HASHTAGS:\n{' '.join(seo_data.get('hashtags', []))}\n\n"
+                    f"HASHTAGS:\n{' '.join('#' + str(h).lstrip('#') for h in seo_data.get('hashtags', []))}\n\n"
                     f"CALL TO ACTION:\n{seo_data.get('cta', '')}\n"
                 )
                 zf.writestr(f"{folder}/seo.txt", seo_txt)
