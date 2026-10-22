@@ -150,75 +150,9 @@ def test_provider(req: ProviderTestRequest, svc: Services = Depends(get_services
     stored = _load_settings_dict(svc)
     provider = req.provider.lower().strip()
 
-    if provider == "gemini":
-        key = req.api_key or stored.get("gemini_api_key") or os.environ.get("GEMINI_API_KEY")
-        if not key:
-            raise HTTPException(400, "Gemini API key is required")
-        import httpx
-        url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={key}"
-        try:
-            resp = httpx.post(url, json={"contents": [{"parts": [{"text": "ping"}]}]}, timeout=15)
-            if resp.status_code == 200:
-                return ProviderTestResponse(ok=True, message="Connected successfully to Google Gemini!", model="gemini-2.0-flash")
-            return ProviderTestResponse(ok=False, message=f"Gemini API returned error: {resp.text[:200]}")
-        except Exception as e:
-            return ProviderTestResponse(ok=False, message=f"Connection error: {e}")
-
-    elif provider == "openai":
-        key = req.api_key or stored.get("openai_api_key") or os.environ.get("OPENAI_API_KEY")
-        if not key:
-            raise HTTPException(400, "OpenAI API key is required")
-        import httpx
-        url = "https://api.openai.com/v1/chat/completions"
-        try:
-            resp = httpx.post(
-                url,
-                json={"model": "gpt-4o-mini", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 5},
-                headers={"Authorization": f"Bearer {key}"},
-                timeout=15,
-            )
-            if resp.status_code == 200:
-                return ProviderTestResponse(ok=True, message="Connected successfully to OpenAI!", model="gpt-4o-mini")
-            return ProviderTestResponse(ok=False, message=f"OpenAI API error: {resp.text[:200]}")
-        except Exception as e:
-            return ProviderTestResponse(ok=False, message=f"Connection error: {e}")
-
-    elif provider == "anthropic":
-        key = req.api_key or stored.get("anthropic_api_key") or os.environ.get("ANTHROPIC_API_KEY")
-        if not key:
-            raise HTTPException(400, "Anthropic API key is required")
-        import httpx
-        url = "https://api.anthropic.com/v1/messages"
-        try:
-            resp = httpx.post(
-                url,
-                json={"model": "claude-3-5-haiku-20241022", "messages": [{"role": "user", "content": "ping"}], "max_tokens": 5},
-                headers={"x-api-key": key, "anthropic-version": "2023-06-01"},
-                timeout=15,
-            )
-            if resp.status_code == 200:
-                return ProviderTestResponse(ok=True, message="Connected successfully to Anthropic Claude!", model="claude-3-5-haiku")
-            return ProviderTestResponse(ok=False, message=f"Anthropic API error: {resp.text[:200]}")
-        except Exception as e:
-            return ProviderTestResponse(ok=False, message=f"Connection error: {e}")
-
-    elif provider == "ollama":
-        host = req.ollama_host or stored.get("ollama_host") or os.environ.get("OLLAMA_HOST") or "http://localhost:11434"
-        import httpx
-        try:
-            resp = httpx.get(f"{host.rstrip('/')}/api/tags", timeout=10)
-            if resp.status_code == 200:
-                models = [m.get("name") for m in resp.json().get("models", [])]
-                return ProviderTestResponse(
-                    ok=True,
-                    message=f"Connected to Ollama! Available models: {', '.join(models[:4]) or 'none'}",
-                    model=models[0] if models else "ollama",
-                )
-            return ProviderTestResponse(ok=False, message=f"Ollama returned HTTP {resp.status_code}")
-        except Exception as e:
-            return ProviderTestResponse(ok=False, message=f"Could not reach Ollama at {host}: {e}")
-
-    elif provider == "pexels":
+    if provider in ("gemini", "openai", "anthropic", "ollama"):
+        return _test_llm(provider, req, stored)
+    if provider == "pexels":
         key = req.api_key or stored.get("pexels_api_key") or os.environ.get("PEXELS_API_KEY")
         if not key:
             raise HTTPException(400, "Pexels API key is required")
@@ -232,3 +166,37 @@ def test_provider(req: ProviderTestRequest, svc: Services = Depends(get_services
             return ProviderTestResponse(ok=False, message=f"Pexels connection error: {e}")
 
     raise HTTPException(400, f"Unsupported provider: {provider}")
+
+
+def _test_llm(provider: str, req: ProviderTestRequest, stored: dict[str, Any]) -> ProviderTestResponse:
+    """Send a tiny JSON request through the exact code path the pipeline uses."""
+    from app import llm
+
+    stored_key, env_key = llm._SECRETS[provider]
+    if provider == "ollama":
+        host = (req.ollama_host or stored.get(stored_key) or os.environ.get(env_key) or llm.DEFAULT_OLLAMA_HOST).rstrip("/")
+        model = stored.get("ollama_model") or os.environ.get("OLLAMA_MODEL") or llm.DEFAULT_OLLAMA_MODEL
+        import httpx
+        try:
+            resp = httpx.get(f"{host}/api/tags", timeout=10)
+        except Exception as exc:
+            return ProviderTestResponse(ok=False, message=f"Could not reach Ollama at {host}: {exc}")
+        if resp.status_code != 200:
+            return ProviderTestResponse(ok=False, message=f"Ollama returned HTTP {resp.status_code}")
+        names = [m.get("name", "") for m in resp.json().get("models", [])]
+        if not any(n == model or n.split(":")[0] == model.split(":")[0] for n in names):
+            return ProviderTestResponse(
+                ok=False, message=f"Ollama is running, but '{model}' isn't downloaded. Run: ollama pull {model}")
+        return ProviderTestResponse(ok=True, message=f"Connected — Ollama has {model} ready.", model=model)
+    else:
+        secret = req.api_key or stored.get(stored_key) or os.environ.get(env_key)
+        if not secret:
+            raise HTTPException(400, f"{provider.capitalize()} API key is required")
+        model = {"gemini": llm.GEMINI_MODELS[0], "openai": llm.OPENAI_MODEL, "anthropic": llm.ANTHROPIC_MODEL}[provider]
+    cfg = llm.ProviderConfig(name=provider, secret=secret.strip(), model=model)
+    try:
+        text, used_model = llm._CALLERS[provider](cfg, "Reply with JSON only.", 'Return {"ok": true}.', 256, "low")
+        llm.parse_json_text(text)
+    except Exception as exc:  # report, never raise: this is a diagnostic
+        return ProviderTestResponse(ok=False, message=str(exc)[:240])
+    return ProviderTestResponse(ok=True, message=f"Connected — {used_model} is ready.", model=used_model)

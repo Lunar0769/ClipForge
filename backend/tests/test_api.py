@@ -223,6 +223,7 @@ def test_delete_project_while_job_running_is_quiet(make_client, caplog):
 
 def test_export_project_zip(make_client, settings):
     import io
+    import json
     import zipfile
     from app.models import Clip
     from app.workspace import Workspace
@@ -258,6 +259,13 @@ def test_export_project_zip(make_client, settings):
         )
     ])[0]
 
+    # SEO pack as the SEO stage writes it (youtube_caption, hashtags without "#")
+    repo.update_project(engine, p_id, video_id="videxport")
+    (ws.video("videxport").dir / "seo_c1.json").write_text(json.dumps({
+        "youtube_caption": "Full YouTube description", "tiktok_caption": "tt", "reels_caption": "rr",
+        "hashtags": ["shorts", "#viral"], "cta": "Follow!",
+    }), encoding="utf-8")
+
     # Test GET export
     res = client.get(f"/api/projects/{p_id}/export")
     assert res.status_code == 200
@@ -269,6 +277,9 @@ def test_export_project_zip(make_client, settings):
         assert any(n.endswith(".mp4") for n in names)
         assert any(n.endswith("thumbnail.jpg") for n in names)
         assert any(n.endswith("captions.ass") for n in names)
+        seo_txt = zf.read(next(n for n in names if n.endswith("seo.txt"))).decode("utf-8")
+        assert "DESCRIPTION (YouTube):\nFull YouTube description" in seo_txt
+        assert "#shorts #viral" in seo_txt
 
 
 def test_rerender_clip_with_polish(make_client, monkeypatch):

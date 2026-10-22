@@ -17,9 +17,13 @@ from app.db import make_engine
 from app.events import EventBus
 from app.gpu import register_cuda_dlls
 from app.jobs.queue import JobQueue, StagesFactory
+from app.llm import apply_stored_keys_to_env
 from app.workspace import Workspace
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+# httpx logs every request URL at INFO; keep provider traffic (and any query-string secrets) out of logs.
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
 
 # "testserver" is the Host header FastAPI's TestClient sends.
 ALLOWED_HOSTS = ["127.0.0.1", "localhost", "testserver"]
@@ -57,6 +61,7 @@ def create_app(settings: Settings | None = None, stages_factory: StagesFactory |
 
     workspace = Workspace(settings.workspace_dir)
     engine = make_engine(settings.db_url)
+    apply_stored_keys_to_env(engine)  # keys saved in Settings must survive a restart
     bus = EventBus()
     if stages_factory is None:
         from app.pipeline.registry import default_stages_factory
