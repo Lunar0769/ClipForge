@@ -194,6 +194,9 @@ export function ClipEditorModal({
           animate={{ opacity: 1, scale: 1, y: 0 }}
           exit={{ opacity: 0, scale: 0.95, y: 15 }}
           transition={{ duration: 0.2 }}
+          role="dialog"
+          aria-modal="true"
+          aria-label="Clip editor"
           className="relative z-10 w-full max-w-4xl max-h-[92vh] flex flex-col rounded-3xl border border-violet-500/20 bg-surface/95 shadow-2xl shadow-violet-brand/10 backdrop-blur-xl overflow-hidden"
         >
           {/* Header */}

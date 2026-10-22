@@ -23,13 +23,13 @@ def test_build_layout_filtergraph_fit_blur():
     full = ";".join(chains)
     assert "[base_comp_0]" in full
     assert "boxblur" in full
-    assert "between(mod(t,12),4,8)" in full
+    assert "zoompan" in full and "fps=30" in full
 
     chains_no_zoom = build_layout_filtergraph("fit_blur", auto_zoom=False)
     full_no_zoom = ";".join(chains_no_zoom)
     assert "[base_comp_0]" in full_no_zoom
     assert "boxblur" in full_no_zoom
-    assert "between(mod(t,12),4,8)" not in full_no_zoom
+    assert "zoompan" not in full_no_zoom
 
 
 def test_build_layout_filtergraph_track():
@@ -37,12 +37,12 @@ def test_build_layout_filtergraph_track():
     full = ";".join(chains)
     assert "[base_comp_0]" in full
     assert "min(iw, ih*9/16)" in full
-    assert "between(mod(t,12),4,8)" in full
+    assert "zoompan" in full
 
     chains_no_zoom = build_layout_filtergraph("track", auto_zoom=False)
     full_no_zoom = ";".join(chains_no_zoom)
     assert "[base_comp_0]" in full_no_zoom
-    assert "between(mod(t,12),4,8)" not in full_no_zoom
+    assert "zoompan" not in full_no_zoom
 
 
 def test_build_layout_filtergraph_split():

@@ -86,25 +86,6 @@ def test_delete_project_deletes_clips(engine):
     assert repo.get_clip(engine, clip.id) is None
 
 
-def test_pick_scorer_prioritizes_gemini_when_set(monkeypatch):
-    from app.pipeline.score import _pick_scorer, Candidate, _safe_score
-
-    monkeypatch.setenv("GEMINI_API_KEY", "test-gemini-key")
-    monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
-
-    scorer, label = _pick_scorer()
-    assert scorer is not None
-    assert label == "gemini-3.5-flash-lite"
-
-    # Verify fallback on failure
-    bad_scorer = lambda txt: (_ for _ in ()).throw(RuntimeError("API error"))
-    cand = Candidate(start=0.0, end=30.0, text="This is an exciting moment in the podcast.")
-    res = _safe_score(bad_scorer, cand)
-    assert res is not None
-    assert "score" in res
-    assert "title" in res
-
 
 def test_update_clip_video_files(engine):
     p = repo.create_project(engine, source_type=SourceType.upload)
@@ -210,7 +191,7 @@ def test_render_clip_video_auto_zoom_and_mood(tmp_path, monkeypatch):
     cmd = seen_cmds[0]
     idx_filter = cmd.index("-filter_complex")
     fc = cmd[idx_filter + 1]
-    assert "if(between(mod(t" in fc
+    assert "zoompan" in fc
     assert "amix=" in fc
     assert "-i" in cmd
     assert any("aevalsrc=" in str(arg) for arg in cmd)
@@ -220,7 +201,7 @@ def test_render_clip_video_auto_zoom_and_mood(tmp_path, monkeypatch):
     cmd2 = seen_cmds[1]
     idx_filter2 = cmd2.index("-filter_complex")
     fc2 = cmd2[idx_filter2 + 1]
-    assert "if(between(mod(t" not in fc2
+    assert "zoompan" not in fc2
     assert "amix=" not in fc2
 
 

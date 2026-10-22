@@ -16,6 +16,9 @@ interface Props {
   maxHeightClass?: string;
 }
 
+/** Messages the user should see without opening the activity log. */
+export const isNotice = (log: string) => /^⚠|couldn't|unavailable|no speech|hugging face|add a/i.test(log);
+
 export function TranscriptStream({
   lines,
   language,
@@ -109,12 +112,18 @@ export function TranscriptStream({
       </div>
 
       {/* Activity / Notice logs */}
-      {logs.length > 0 && (
+      {/* Warnings are always shown; routine activity only when the Logs toggle is open. */}
+      {(showLogs ? logs : logs.filter(isNotice)).length > 0 && (
         <div className="mb-3 space-y-1.5">
-          {logs.map((log) => (
+          {(showLogs ? logs : logs.filter(isNotice)).map((log) => (
             <p
               key={log}
-              className="rounded-xl border border-gold/20 bg-gold/10 px-3.5 py-2 text-xs text-gold leading-relaxed font-medium"
+              className={clsx(
+                "rounded-xl px-3.5 py-2 text-xs leading-relaxed",
+                isNotice(log)
+                  ? "border border-gold/20 bg-gold/10 font-medium text-gold"
+                  : "bg-surface-2 font-mono text-muted",
+              )}
             >
               {log}
             </p>

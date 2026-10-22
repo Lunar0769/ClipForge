@@ -37,66 +37,59 @@ SUPPORTED_LAYOUTS: dict[str, dict[str, str]] = {
 }
 
 
+# Punch-in: ease from 1.0x to 1.08x between seconds 4-8 of every 12 s window (retention bump).
+# zoompan re-evaluates per frame — unlike crop's w/h, which ffmpeg evaluates only once at setup.
+ZOOM_EXPR = "1+0.08*clip((mod(it,12)-4)/0.6,0,1)*clip((8-mod(it,12))/0.6,0,1)"
+OUTPUT_FPS = 30
+
+
+def _base_chains(mode: str) -> list[str]:
+    """Filter chains that compose the 1080x1920 picture into `[base_raw]`."""
+    if mode == "track":
+        # Full-bleed 9:16 centre crop
+        return [
+            "[0:v]crop=w='min(iw, ih*9/16)':h='min(ih, iw*16/9)':x='(iw-out_w)/2':y='(ih-out_h)/2',"
+            "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[base_raw]"
+        ]
+    if mode == "split":
+        # 50/50 vertical split: top half and bottom half of the frame, each 1080x960
+        return [
+            "[0:v]split=2[top_in][bot_in]",
+            "[top_in]crop=w='min(iw, ih*9/16)':h='ih*0.5':x='(iw-out_w)/2':y=0,scale=1080:960[top_half]",
+            "[bot_in]crop=w='min(iw, ih*9/16)':h='ih*0.5':x='(iw-out_w)/2':y='ih*0.5',scale=1080:960[bot_half]",
+            "[top_half][bot_half]vstack=inputs=2[base_raw]",
+        ]
+    if mode == "gaming":
+        # Upper 35% facecam (1080x672) + lower 65% gameplay (1080x1248)
+        return [
+            "[0:v]split=2[cam_in][game_in]",
+            "[cam_in]crop=w='iw*0.4':h='ih*0.45':x='(iw-out_w)/2':y='ih*0.05',scale=1080:672[cam_box]",
+            "[game_in]crop=w='min(iw, ih*9/16*1.2)':h='ih*0.7':x='(iw-out_w)/2':y='ih*0.3',scale=1080:1248[game_box]",
+            "[cam_box][game_box]vstack=inputs=2[base_raw]",
+        ]
+    # fit_blur: original framing centred on a blurred 1080x1920 backdrop
+    return [
+        "[0:v]split=2[bg_in][fg_in]",
+        "[bg_in]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:2[bg]",
+        "[fg_in]scale=1080:1920:force_original_aspect_ratio=decrease[fg]",
+        "[bg][fg]overlay=(W-w)/2:(H-h)/2[base_raw]",
+    ]
+
+
 def build_layout_filtergraph(
     layout_mode: str = "fit_blur",
     auto_zoom: bool = True,
 ) -> list[str]:
     """Generates FFmpeg filter complex chains that output the base 1080x1920 composition to `[base_comp_0]`."""
     mode = layout_mode if layout_mode in SUPPORTED_LAYOUTS else "fit_blur"
-
-    if mode == "track":
-        # Full-bleed 9:16 center-weighted speaker crop
-        if auto_zoom:
-            # Dynamic 1.08x punch-in zoom during retention window
-            return [
-                (
-                    "[0:v]crop=w='min(iw, ih*9/16)*if(between(mod(t,12),4,8), 0.92, 1.0)'"
-                    ":h='min(ih, iw*16/9)*if(between(mod(t,12),4,8), 0.92, 1.0)'"
-                    ":x='(iw-out_w)/2':y='(ih-out_h)/2',"
-                    "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[base_comp_0]"
-                )
-            ]
-        return [
-            (
-                "[0:v]crop=w='min(iw, ih*9/16)':h='min(ih, iw*16/9)':x='(iw-out_w)/2':y='(ih-out_h)/2',"
-                "scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920[base_comp_0]"
-            )
-        ]
-
-    elif mode == "split":
-        # 50/50 vertical split-screen with subtle divider
-        # Top segment: 1080x960, bottom segment: 1080x960
-        return [
-            "[0:v]split=2[top_in][bot_in]",
-            "[top_in]crop=w='min(iw, ih*9/16)':h='ih*0.5':x='(iw-out_w)/2':y=0,scale=1080:960[top_half]",
-            "[bot_in]crop=w='min(iw, ih*9/16)':h='ih*0.5':x='(iw-out_w)/2':y='ih*0.5',scale=1080:960[bot_half]",
-            "[top_half][bot_half]vstack=inputs=2[base_comp_0]",
-        ]
-
-    elif mode == "gaming":
-        # Gaming PiP/Stacked layout: Upper 35% webcam (1080x672) + Lower 65% gameplay (1080x1248)
-        return [
-            "[0:v]split=2[cam_in][game_in]",
-            "[cam_in]crop=w='iw*0.4':h='ih*0.45':x='(iw-out_w)/2':y='ih*0.05',scale=1080:672[cam_box]",
-            "[game_in]crop=w='min(iw, ih*9/16*1.2)':h='ih*0.7':x='(iw-out_w)/2':y='ih*0.3',scale=1080:1248[game_box]",
-            "[cam_box][game_box]vstack=inputs=2[base_comp_0]",
-        ]
-
+    chains = _base_chains(mode)
+    if auto_zoom:
+        # Normalise the frame rate first: zoompan emits frames at its own fps, so a 25/60 fps source
+        # would otherwise drift out of sync with the audio.
+        chains.append(
+            f"[base_raw]fps={OUTPUT_FPS},zoompan=z='{ZOOM_EXPR}':d=1:x='iw/2-(iw/zoom/2)':y='ih/2-(ih/zoom/2)'"
+            f":s=1080x1920:fps={OUTPUT_FPS}[base_comp_0]"
+        )
     else:
-        # Default "fit_blur": Centered 16:9 on 1080x1920 blurred ambient background
-        if auto_zoom:
-            fg_filter = (
-                "crop=w='if(between(mod(t,12),4,8), in_w*0.92, in_w)':"
-                "h='if(between(mod(t,12),4,8), in_h*0.92, in_h)':"
-                "x='(in_w-out_w)/2':y='(in_h-out_h)/2',"
-                "scale=1080:1920:force_original_aspect_ratio=decrease"
-            )
-        else:
-            fg_filter = "scale=1080:1920:force_original_aspect_ratio=decrease"
-
-        return [
-            "[0:v]split=2[bg_in][fg_in]",
-            "[bg_in]scale=1080:1920:force_original_aspect_ratio=increase,crop=1080:1920,boxblur=20:2[bg]",
-            f"[fg_in]{fg_filter}[fg]",
-            "[bg][fg]overlay=(W-w)/2:(H-h)/2[base_comp_0]",
-        ]
+        chains.append("[base_raw]null[base_comp_0]")
+    return chains

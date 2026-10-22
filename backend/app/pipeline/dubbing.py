@@ -9,6 +9,7 @@ preserve timing alignment, and creates matching translated kinetic subtitles.
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import os
 import re
@@ -17,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 from app import media
+from app.llm import LLMError, generate_json
 from app.media import _run_cancellable, _tool
 from app.pipeline.transcript import Word
 
@@ -43,45 +45,39 @@ FALLBACK_PHRASES: dict[str, dict[str, str]] = {
 }
 
 
-def translate_text(text: str, target_lang: str) -> str:
-    """Translates spoken text to the target language via LLM or dictionary fallback."""
+class DubbingError(Exception):
+    """Dubbing can't produce a real translated voice; the message is shown to the user."""
+
+
+_TRANSLATE_SYSTEM = (
+    "You are a professional video dubbing translator. Translate each spoken line into natural, colloquial "
+    "{lang}, keeping roughly the same spoken length and rhythm. Keep names and brand terms. "
+    'Return ONLY JSON: {{"translations": ["...", ...]}} with exactly one translation per input line, in order.'
+)
+
+
+def translate_segments(texts: list[str], target_lang: str, *, engine=None) -> list[str]:
+    """Translate all lines of a clip in one AI call (shared context, one request instead of dozens)."""
+    target_lang = target_lang.lower().strip()
+    if target_lang not in SUPPORTED_LANGUAGES or not any(t.strip() for t in texts):
+        return list(texts)
+    lang_name = SUPPORTED_LANGUAGES[target_lang]["name"]
+    prompt = json.dumps({"lines": texts}, ensure_ascii=False)
+    try:
+        data, _model = generate_json(_TRANSLATE_SYSTEM.format(lang=lang_name), prompt, engine=engine,
+                                     max_tokens=4096, effort="low")
+    except LLMError as exc:
+        raise DubbingError(f"Translation needs an AI provider. {exc.hint}") from exc
+    out = data.get("translations") if isinstance(data, dict) else data
+    if not isinstance(out, list) or len(out) != len(texts):
+        raise DubbingError("The AI returned an incomplete translation. Please try again.")
+    return [str(t).strip() or src for t, src in zip(out, texts)]
+
+
+def translate_text(text: str, target_lang: str, *, engine=None) -> str:
     if not text.strip():
         return ""
-    target_lang = target_lang.lower().strip()
-    if target_lang not in SUPPORTED_LANGUAGES:
-        return text
-
-    target_name = SUPPORTED_LANGUAGES[target_lang]["name"]
-
-    # 1. Try active LLM if available
-    gemini_key = os.environ.get("GEMINI_API_KEY")
-    if gemini_key:
-        try:
-            import httpx
-            prompt = (
-                f"You are a professional video dubbing translator. Translate this spoken dialogue into natural, colloquial {target_name}. "
-                f"Match spoken length and rhythm. Output ONLY the translated sentence, without quotes or commentary:\n\n{text}"
-            )
-            url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={gemini_key}"
-            resp = httpx.post(url, json={"contents": [{"parts": [{"text": prompt}]}]}, timeout=8.0)
-            if resp.status_code == 200:
-                out = resp.json()["candidates"][0]["content"]["parts"][0]["text"].strip()
-                if out:
-                    return out
-        except Exception as e:
-            logger.debug("Gemini translation failed: %s", e)
-
-    # 2. Heuristic word substitution fallback
-    words = text.split()
-    phrases = FALLBACK_PHRASES.get(target_lang, {})
-    translated_words = []
-    for w in words:
-        clean = re.sub(r"[^a-zA-Z]+", "", w).lower()
-        if clean in phrases:
-            translated_words.append(phrases[clean])
-        else:
-            translated_words.append(w)
-    return " ".join(translated_words)
+    return translate_segments([text], target_lang, engine=engine)[0]
 
 
 async def _synthesize_edge_tts(text: str, voice: str, out_path: Path) -> bool:
@@ -116,21 +112,8 @@ def synthesize_speech(
         finally:
             loop.close()
     except Exception as e:
-        logger.debug("Edge-TTS network synthesis failed (%s), falling back to procedural speech surrogate", e)
-
-    # 2. Local FFmpeg procedural speech surrogate
-    ffmpeg = _tool("ffmpeg")
-    cmd = [
-        ffmpeg,
-        "-y",
-        "-f", "lavfi",
-        "-i", f"sine=frequency=280:duration={max(0.5, duration_s):.2f}",
-        "-af", "volume=0.35,chorus=0.7:0.9:55:0.4:0.25:2",
-        "-c:a", "libmp3lame",
-        str(out_path),
-    ]
-    _run_cancellable(cmd, cancel, cwd=out_path.parent)
-    return out_path
+        raise DubbingError(f"Couldn't generate the dubbed voice — Edge TTS needs an internet connection ({e}).") from e
+    raise DubbingError("Edge TTS returned no audio for this line.")
 
 
 class DubbingSegment:
@@ -150,6 +133,7 @@ def generate_dubbed_clip_audio(
     dst_path: Path,
     *,
     cancel: threading.Event | None = None,
+    engine=None,
 ) -> tuple[Path, list[Word]]:
     """Generates a synchronized dubbed speech audio track and matching translated Word objects."""
     dst_path.parent.mkdir(parents=True, exist_ok=True)
@@ -158,32 +142,26 @@ def generate_dubbed_clip_audio(
 
     # 1. Group words in clip window into sentence-sized segments (~2 to 4 seconds)
     in_clip_words = [w for w in words if w.start >= clip_start_s and w.end <= clip_end_s]
-    segments: list[DubbingSegment] = []
+    if not in_clip_words:
+        raise DubbingError("There's no speech in this clip to dub.")
 
-    if in_clip_words:
-        curr_words: list[Word] = []
-        for w in in_clip_words:
-            curr_words.append(w)
-            # Break on punctuation or after ~3.5 seconds
-            raw_text = getattr(w, "text", getattr(w, "word", ""))
-            dur = curr_words[-1].end - curr_words[0].start
-            if any(p in raw_text for p in [".", "?", "!", ","]) or dur >= 3.5:
-                seg_text = " ".join(getattr(item, "text", getattr(item, "word", "")).strip() for item in curr_words)
-                s_rel = max(0.0, curr_words[0].start - clip_start_s)
-                e_rel = min(clip_duration, curr_words[-1].end - clip_start_s)
-                translated = translate_text(seg_text, target_lang)
-                segments.append(DubbingSegment(seg_text, translated, s_rel, e_rel))
-                curr_words = []
-        if curr_words:
+    lines: list[tuple[str, float, float]] = []
+    curr_words: list[Word] = []
+    for i, w in enumerate(in_clip_words):
+        curr_words.append(w)
+        raw_text = getattr(w, "text", getattr(w, "word", ""))
+        dur = curr_words[-1].end - curr_words[0].start
+        # Break on punctuation, after ~3.5 s, or at the last word
+        if any(p in raw_text for p in [".", "?", "!", ","]) or dur >= 3.5 or i == len(in_clip_words) - 1:
             seg_text = " ".join(getattr(item, "text", getattr(item, "word", "")).strip() for item in curr_words)
             s_rel = max(0.0, curr_words[0].start - clip_start_s)
             e_rel = min(clip_duration, curr_words[-1].end - clip_start_s)
-            translated = translate_text(seg_text, target_lang)
-            segments.append(DubbingSegment(seg_text, translated, s_rel, e_rel))
-    else:
-        # Fallback dummy segment
-        translated = translate_text("Viral short clip", target_lang)
-        segments.append(DubbingSegment("Viral short clip", translated, 0.5, min(clip_duration - 0.5, 3.5)))
+            lines.append((seg_text, s_rel, e_rel))
+            curr_words = []
+
+    translations = translate_segments([text for text, _, _ in lines], target_lang, engine=engine)
+    segments = [DubbingSegment(text, translated, s_rel, e_rel)
+                for (text, s_rel, e_rel), translated in zip(lines, translations)]
 
     # 2. Synthesize speech for each segment and compute translated Word objects
     translated_words: list[Word] = []
@@ -235,7 +213,7 @@ def generate_dubbed_clip_audio(
             filter_mix.append(f"[{i}:a]adelay={delay_ms}|{delay_ms}[a{i}]")
 
         mix_str = "".join(f"[a{i}]" for i in range(len(seg_files)))
-        filter_mix.append(f"{mix_str}amix=inputs={len(seg_files)}:duration=longest:dropout_transition=0[aout]")
+        filter_mix.append(f"{mix_str}amix=inputs={len(seg_files)}:duration=longest:dropout_transition=0:normalize=0[aout]")
         filter_complex = ";".join(filter_mix)
 
     cmd = [

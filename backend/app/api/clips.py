@@ -1,5 +1,6 @@
 """Clips API — Phase 2 & Phase 3."""
 import json
+import logging
 import re
 from pathlib import Path
 
@@ -13,6 +14,7 @@ from app.pipeline.captions import write_clip_ass_file
 from app.pipeline.render import extract_clip_thumbnail, render_clip_video
 from app.pipeline.transcript import Transcript
 
+logger = logging.getLogger(__name__)
 router = APIRouter(tags=["clips"])
 
 
@@ -194,18 +196,20 @@ def rerender_clip(
     dubbed_audio_path = None
     target_words = words
     if req.target_language:
+        from app.pipeline.dubbing import DubbingError, generate_dubbed_clip_audio
+        dub_file = clips_dir / f"{clip.id}_dub_{req.target_language}.mp3"
         try:
-            from app.pipeline.dubbing import generate_dubbed_clip_audio
-            dub_file = clips_dir / f"{clip.id}_dub_{req.target_language}.mp3"
             dubbed_audio_path, target_words = generate_dubbed_clip_audio(
                 words=words,
                 clip_start_s=start_s,
                 clip_end_s=end_s,
                 target_lang=req.target_language,
                 dst_path=dub_file,
+                engine=svc.engine,
             )
-        except Exception as dub_exc:
-            logger.warning("Dubbing generation error for clip %s: %s", clip.id, dub_exc)
+        except DubbingError as dub_exc:
+            # Tell the user instead of silently rendering the original language.
+            raise HTTPException(422, str(dub_exc)) from dub_exc
 
     # Silence & Filler jump-cut trimmer if enabled
     keep_intervals = None
@@ -282,7 +286,8 @@ def rerender_clip(
         broll_enabled=req.broll_enabled,
         broll_cues=[c.model_dump() for c in active_broll_cues] if active_broll_cues else clip.broll_cues,
         target_language=req.target_language,
-        dubbed_audio_file=f"clips/{dubbed_audio_path.name}" if dubbed_audio_path and dubbed_audio_path.exists() else clip.dubbed_audio_file,
+        # Turning dubbing off must also forget the old dub, or the UI keeps offering the wrong language.
+        dubbed_audio_file=f"clips/{dubbed_audio_path.name}" if dubbed_audio_path and dubbed_audio_path.exists() else None,
         layout_mode=layout_mode,
         filler_trim=req.filler_trim,
         start_s=start_s,
