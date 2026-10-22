@@ -53,6 +53,9 @@ export const api = {
   retry: (projectId: string) => request<Project>(`/projects/${projectId}/retry`, { method: "POST" }),
   cancelJob: (jobId: string) => request<Job>(`/jobs/${jobId}/cancel`, { method: "POST" }),
   deleteProject: (id: string) => request<void>(`/projects/${id}`, { method: "DELETE" }),
+  deleteClip: (clipId: string) => request<void>(`/clips/${clipId}`, { method: "DELETE" }),
+  updateStatus: () =>
+    request<{ current: string; latest: string | null; update_available: boolean; url: string }>("/system/update"),
   stages: () => request<StageInfo[]>("/pipeline/stages"),
   transcript: (projectId: string) => request<Transcript>(`/projects/${projectId}/transcript`),
   system: () => request<SystemInfo>("/system"),

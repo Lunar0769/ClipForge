@@ -1,3 +1,4 @@
+import { UpdateNotice } from "./UpdateNotice";
 import { Moon, Settings, Sun } from "lucide-react";
 import { useState, type ReactNode } from "react";
 import { Link } from "react-router";
@@ -25,6 +26,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
           </Link>
           <nav className="flex items-center gap-1">
+            <UpdateNotice />
             <Link to="/" className="rounded-full px-4 py-2 text-sm text-muted transition hover:bg-surface-2 hover:text-fg">
               New project
             </Link>
