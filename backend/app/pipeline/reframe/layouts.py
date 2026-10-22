@@ -11,6 +11,8 @@ from __future__ import annotations
 
 from typing import Literal
 
+from app.pipeline.reframe.tracking import TrackPlan
+
 LayoutMode = Literal["fit_blur", "track", "split", "gaming"]
 
 SUPPORTED_LAYOUTS: dict[str, dict[str, str]] = {
@@ -43,8 +45,15 @@ ZOOM_EXPR = "1+0.08*clip((mod(it,12)-4)/0.6,0,1)*clip((8-mod(it,12))/0.6,0,1)"
 OUTPUT_FPS = 30
 
 
-def _base_chains(mode: str) -> list[str]:
+def _base_chains(mode: str, track: TrackPlan | None = None, track_cmds: str | None = None) -> list[str]:
     """Filter chains that compose the 1080x1920 picture into `[base_raw]`."""
+    if mode == "track" and track is not None and track_cmds:
+        # Follow the speaker: sendcmd moves the crop window's x frame by frame along the tracked path.
+        x0 = track.keyframes[0][1] if track.keyframes else (track.src_w - track.crop_w) // 2
+        return [
+            f"[0:v]sendcmd=f='{track_cmds}',crop=w={track.crop_w}:h={track.crop_h}:x={x0}:y={track.y},"
+            "scale=1080:1920:flags=lanczos[base_raw]"
+        ]
     if mode == "track":
         # Full-bleed 9:16 centre crop
         return [
@@ -79,10 +88,13 @@ def _base_chains(mode: str) -> list[str]:
 def build_layout_filtergraph(
     layout_mode: str = "fit_blur",
     auto_zoom: bool = True,
+    *,
+    track: TrackPlan | None = None,
+    track_cmds: str | None = None,
 ) -> list[str]:
     """Generates FFmpeg filter complex chains that output the base 1080x1920 composition to `[base_comp_0]`."""
     mode = layout_mode if layout_mode in SUPPORTED_LAYOUTS else "fit_blur"
-    chains = _base_chains(mode)
+    chains = _base_chains(mode, track, track_cmds)
     if auto_zoom:
         # Normalise the frame rate first: zoompan emits frames at its own fps, so a 25/60 fps source
         # would otherwise drift out of sync with the audio.

@@ -23,6 +23,7 @@ from app.pipeline.captions import write_clip_ass_file
 from app.pipeline.context import PipelineContext
 from app.pipeline.errors import StageCancelled, StageError
 from app.pipeline.reframe.layouts import build_layout_filtergraph
+from app.pipeline.reframe.tracking import TrackPlan, compute_track, write_sendcmd
 from app.pipeline.transcript import Transcript
 
 logger = logging.getLogger(__name__)
@@ -45,6 +46,9 @@ NVENC_ARGS = ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "23", 
 CPU_ARGS = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
 VIDEO_ENCODER_PLACEHOLDER_TOKEN = "<video-encoder>"
 
+# New clips follow the speaker; plan_layout falls back to fit_blur when there's no face to follow.
+DEFAULT_LAYOUT = "track"
+
 
 MOOD_PRESETS: dict[str, str] = {
     "chill": "0.03*sin(2*PI*110*t) + 0.02*sin(2*PI*165*t) + 0.015*sin(2*PI*220*t)",
@@ -66,9 +70,11 @@ def render_clip_video(
     dubbed_audio: Path | None = None,
     layout_mode: str = "fit_blur",
     keep_intervals: list[tuple[float, float]] | None = None,
+    track: TrackPlan | None = None,
     cancel: threading.Event | None = None,
 ) -> None:
     """Renders a single 9:16 vertical video slice from src to dst with layout framing, optional ASS subtitles, dynamic punch-in zoom, mood audio bed, B-roll cutaways, dubbed audio, and jump-cut silence/filler trimming."""
+    src = Path(src).resolve()  # ffmpeg runs with cwd=dst.parent, so relative paths would break
     tmp = dst.with_name(f"{dst.stem}.tmp{dst.suffix}")
     ffmpeg = _tool("ffmpeg")
     duration = max(1.0, end_s - start_s)
@@ -78,7 +84,15 @@ def render_clip_video(
     ) or duration
 
     # 1. Base 9:16 vertical layout composition: fit_blur, track, split, or gaming
-    filter_chains = build_layout_filtergraph(layout_mode=layout_mode, auto_zoom=auto_zoom)
+    track_cmds_file: Path | None = None
+    if layout_mode == "track" and track is not None and track.keyframes:
+        track_cmds_file = dst.parent / f"{dst.stem}.track.cmd"
+        write_sendcmd(track, track_cmds_file)
+    filter_chains = build_layout_filtergraph(
+        layout_mode=layout_mode, auto_zoom=auto_zoom,
+        track=track if track_cmds_file else None,
+        track_cmds=track_cmds_file.name if track_cmds_file else None,  # relative: ffmpeg runs in dst.parent
+    )
 
     extra_inputs: list[str] = []
     input_count = 1
@@ -213,6 +227,48 @@ def render_clip_video(
         os.replace(tmp, dst)
     finally:
         tmp.unlink(missing_ok=True)
+        if track_cmds_file is not None:
+            track_cmds_file.unlink(missing_ok=True)
+
+
+def plan_layout(
+    src: Path,
+    start_s: float,
+    end_s: float,
+    layout_mode: str,
+    *,
+    models_dir: Path,
+    cache_file: Path,
+    cancel: threading.Event | None = None,
+) -> tuple[str, TrackPlan | None, str | None]:
+    """Resolve the layout to render: (layout, track plan, user-facing note).
+
+    "track" follows the speaker's face; when too few faces are found (screen recordings, B-roll-only
+    shots) it falls back to "fit_blur" so nobody gets cropped out of frame.
+    """
+    if layout_mode != "track":
+        return layout_mode, None, None
+    plan: TrackPlan | None = None
+    if cache_file.exists():
+        try:
+            cached = json.loads(cache_file.read_text(encoding="utf-8"))
+            if cached.get("start_s") == start_s and cached.get("end_s") == end_s:
+                plan = TrackPlan.model_validate(cached["plan"])
+        except Exception:
+            plan = None
+    if plan is None:
+        try:
+            plan = compute_track(src, start_s, end_s, models_dir=models_dir, cancel=cancel)
+        except StageCancelled:
+            raise
+        except Exception as exc:
+            logger.warning("Speaker tracking failed for %s: %s", cache_file.stem, exc)
+            return "fit_blur", None, "Speaker tracking wasn't available for this clip, so it uses Fit + Blur."
+        cache_file.write_text(json.dumps({"start_s": start_s, "end_s": end_s, "plan": plan.model_dump()}),
+                              encoding="utf-8")
+    if not plan.usable:
+        return "fit_blur", None, "No clear face to follow in this clip, so it uses Fit + Blur instead."
+    return "track", plan, None
 
 
 def extract_clip_thumbnail(
@@ -346,7 +402,17 @@ class RenderStage:
                     logger.warning("Failed to prepare B-roll cues for clip %s: %s", clip.id, broll_err)
 
             # 4. Video render
+            layout_mode = clip.layout_mode or DEFAULT_LAYOUT
+            track = None
             if not video_dst.exists():
+                ctx.progress(self.name, idx / total, f"Following the speaker in clip #{clip.rank + 1}…"
+                             if layout_mode == "track" else None)
+                layout_mode, track, layout_note = plan_layout(
+                    src, clip.start_s, clip.end_s, layout_mode, models_dir=ctx.settings.models_dir,
+                    cache_file=clips_dir / f"{clip.id}.track.json", cancel=ctx.cancel_event,
+                )
+                if layout_note:
+                    ctx.emit("log", stage=self.name, message=f"Clip #{clip.rank + 1}: {layout_note}")
                 ctx.emit(
                     "log",
                     stage=self.name,
@@ -361,8 +427,9 @@ class RenderStage:
                     auto_zoom=clip.auto_zoom if clip.auto_zoom is not None else True,
                     music_mood=clip.music_mood,
                     broll_cues=active_broll_cues,
-                    layout_mode=clip.layout_mode or "fit_blur",
+                    layout_mode=layout_mode,
                     keep_intervals=keep_intervals,
+                    track=track,
                     cancel=ctx.cancel_event,
                 )
 
@@ -390,7 +457,7 @@ class RenderStage:
                 music_mood=clip.music_mood,
                 broll_enabled=clip.broll_enabled,
                 broll_cues=[c.model_dump() for c in active_broll_cues] if active_broll_cues else clip.broll_cues,
-                layout_mode=clip.layout_mode or "fit_blur",
+                layout_mode=layout_mode,
                 filler_trim=clip.filler_trim,
             )
 

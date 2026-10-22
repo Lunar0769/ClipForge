@@ -1,6 +1,6 @@
 [project]
 name = "clipforge"
-version = "0.1.0"
+version = "1.0.0"
 description = "ClipForge — turn long videos into viral shorts"
 requires-python = ">=3.13,<3.14"
 dependencies = [
@@ -17,6 +17,8 @@ dependencies = [
     "httpx>=0.28",
     "edge-tts>=7.0.0",
     "anthropic>=0.70",
+    "mediapipe>=1.0.1",
+    "numpy>=2.2",
 ]
 
 [dependency-groups]
