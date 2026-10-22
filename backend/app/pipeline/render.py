@@ -16,6 +16,7 @@ from pathlib import Path
 from typing import Any
 
 from app import media, repo
+from app.gpu import ffmpeg_has_nvenc
 from app.media import _run_cancellable, _tool
 from app.models import Clip
 from app.pipeline.captions import write_clip_ass_file
@@ -37,6 +38,12 @@ VERTICAL_BLUR_FILTER = (
     "[fg_in]scale=1080:1920:force_original_aspect_ratio=decrease[fg];"
     "[bg][fg]overlay=(W-w)/2:(H-h)/2[v]"
 )
+
+
+# Encoder settings: NVENC (GPU) when available, libx264 (CPU) as the fallback.
+NVENC_ARGS = ["-c:v", "h264_nvenc", "-preset", "p5", "-rc", "vbr", "-cq", "23", "-b:v", "0"]
+CPU_ARGS = ["-c:v", "libx264", "-preset", "veryfast", "-crf", "23"]
+VIDEO_ENCODER_PLACEHOLDER_TOKEN = "<video-encoder>"
 
 
 MOOD_PRESETS: dict[str, str] = {
@@ -65,6 +72,10 @@ def render_clip_video(
     tmp = dst.with_name(f"{dst.stem}.tmp{dst.suffix}")
     ffmpeg = _tool("ffmpeg")
     duration = max(1.0, end_s - start_s)
+    # Length of the finished short: jump-cuts remove the dead air between keep intervals.
+    out_duration = (
+        sum(max(0.0, min(e, end_s) - max(s, start_s)) for s, e in keep_intervals) if keep_intervals else duration
+    ) or duration
 
     # 1. Base 9:16 vertical layout composition: fit_blur, track, split, or gaming
     filter_chains = build_layout_filtergraph(layout_mode=layout_mode, auto_zoom=auto_zoom)
@@ -77,7 +88,7 @@ def render_clip_video(
     if music_mood and music_mood in MOOD_PRESETS:
         extra_inputs.extend([
             "-f", "lavfi",
-            "-i", f"aevalsrc=exprs='{MOOD_PRESETS[music_mood]}':s=44100:d={duration:.3f}",
+            "-i", f"aevalsrc=exprs='{MOOD_PRESETS[music_mood]}':s=44100:d={out_duration:.3f}",
         ])
         music_input_idx = input_count
         input_count += 1
@@ -153,9 +164,11 @@ def render_clip_video(
         else:
             filter_chains.append(f"[{music_input_idx}:a]volume=0.25[a]")
         audio_maps = ["-map", "[a]"]
-    elif base_voice_stream:
-        audio_maps = ["-map", base_voice_stream]
+    elif base_voice_stream and base_voice_stream != "[0:a]":
+        audio_maps = ["-map", base_voice_stream]  # output label of an audio filter chain
     else:
+        # Untouched source audio is an input stream, not a filter label: "-map [0:a]" makes
+        # ffmpeg look for a filter output named 0:a and fail.
         audio_maps = ["-map", "0:a?"]
 
     filter_complex = ";".join(filter_chains)
@@ -172,21 +185,31 @@ def render_clip_video(
         "-filter_complex", filter_complex,
         "-map", "[v]",
         *audio_maps,
-        "-c:v", "libx264",
-        "-preset", "veryfast",
-        "-crf", "23",
+        VIDEO_ENCODER_PLACEHOLDER_TOKEN,
         "-pix_fmt", "yuv420p",
         "-c:a", "aac",
         "-b:a", "128k",
         "-ar", "44100",
+        "-t", f"{out_duration:.3f}",  # every output stream ends with the (trimmed) picture
         "-movflags", "+faststart",
         "-f", "mp4",
         str(tmp),
     ]
 
     try:
-        # Run inside dst.parent directory so relative ASS filename resolves without path escaping issues
-        _run_cancellable(cmd, cancel, cwd=dst.parent)
+        # Run inside dst.parent directory so relative ASS filename resolves without path escaping issues.
+        # Try the GPU encoder first; fall back to CPU if NVENC is missing, busy or unsupported.
+        encoders = [NVENC_ARGS, CPU_ARGS] if ffmpeg_has_nvenc() else [CPU_ARGS]
+        for attempt, encoder in enumerate(encoders, start=1):
+            i = cmd.index(VIDEO_ENCODER_PLACEHOLDER_TOKEN)
+            run_cmd = cmd[:i] + encoder + cmd[i + 1:]
+            try:
+                _run_cancellable(run_cmd, cancel, cwd=dst.parent)
+                break
+            except media.MediaError:
+                if attempt == len(encoders):
+                    raise
+                logger.warning("NVENC encode failed for %s; retrying on the CPU", dst.name)
         os.replace(tmp, dst)
     finally:
         tmp.unlink(missing_ok=True)
