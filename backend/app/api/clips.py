@@ -9,7 +9,14 @@ from fastapi.responses import FileResponse
 
 from app import repo
 from app.api.deps import Services, get_services
-from app.api.schemas import ClipOut, ClipRenderRequest, ClipUpdateRequest, clip_out
+from app.api.schemas import (
+    ChatEditRequest,
+    ChatEditResponse,
+    ClipOut,
+    ClipRenderRequest,
+    ClipUpdateRequest,
+    clip_out,
+)
 from app.pipeline.captions import write_clip_ass_file
 from app.pipeline.render import DEFAULT_LAYOUT, extract_clip_thumbnail, plan_layout, render_clip_video
 from app.pipeline.transcript import Transcript
@@ -35,6 +42,105 @@ def _seo_data(svc: Services, clip_id: str, project_id: str) -> dict | None:
 def _clip_paths(svc: Services, project_id: str, clip_id: str) -> tuple[Path, Path]:
     clips_dir = svc.workspace.project_dir(project_id) / "clips"
     return clips_dir / f"{clip_id}.mp4", clips_dir / f"{clip_id}.jpg"
+
+
+def _trigger_rerender(clip_id: str, svc: Services) -> None:
+    """Fire off a background re-render for a clip after chat edit changes."""
+    import threading
+    from app.pipeline.render import extract_clip_thumbnail, render_clip_video
+    from app.pipeline.captions import write_clip_ass_file
+
+    clip = repo.get_clip(svc.engine, clip_id)
+    if clip is None:
+        return
+
+    project = repo.get_project(svc.engine, clip.project_id)
+    if project is None or project.video_id is None:
+        return
+
+    video_dir = svc.workspace.video(project.video_id).dir
+    src = next(
+        (p for ext in (".mp4", ".mkv", ".webm", ".mov") if (p := video_dir / f"source{ext}").exists()),
+        None,
+    )
+    if src is None:
+        return
+
+    clips_dir = svc.workspace.project_dir(clip.project_id) / "clips"
+    clips_dir.mkdir(parents=True, exist_ok=True)
+    video_dst = clips_dir / f"{clip.id}.mp4"
+    ass_dst = clips_dir / f"{clip.id}.ass"
+    thumb_dst = clips_dir / f"{clip.id}.jpg"
+
+    def _run():
+        try:
+            # Delete old render so it regenerates
+            video_dst.unlink(missing_ok=True)
+            ass_dst.unlink(missing_ok=True)
+            thumb_dst.unlink(missing_ok=True)
+
+            # Load transcript words for subtitle sync
+            import json as _json
+            words_path = video_dir / "transcript_words.json"
+            words = []
+            if words_path.exists():
+                from app.pipeline.transcript import Word
+                raw_words = _json.loads(words_path.read_text())
+                words = [Word(**w) for w in raw_words]
+
+            # Keep intervals if filler_trim
+            keep_intervals = None
+            render_words = words
+            if clip.filler_trim and words:
+                from app.pipeline.fillers import detect_silence_and_fillers
+                keep_intervals, render_words, _ = detect_silence_and_fillers(
+                    words=words, clip_start_s=clip.start_s, clip_end_s=clip.end_s
+                )
+
+            # Write ASS subtitles
+            if render_words:
+                try:
+                    write_clip_ass_file(
+                        words=render_words,
+                        clip_start_s=clip.start_s,
+                        clip_end_s=clip.end_s,
+                        dst_path=ass_dst,
+                        style_name=clip.subtitle_style or "hormozi",
+                        hook_text=clip.hook_text or clip.title,
+                    )
+                except Exception:
+                    pass
+
+            render_clip_video(
+                src=src,
+                dst=video_dst,
+                start_s=clip.start_s,
+                end_s=clip.end_s,
+                ass_file=ass_dst if ass_dst.exists() else None,
+                auto_zoom=clip.auto_zoom if clip.auto_zoom is not None else True,
+                music_mood=clip.music_mood,
+                broll_cues=clip.broll_cues,
+                layout_mode=clip.layout_mode or "track",
+                keep_intervals=keep_intervals,
+            )
+
+            extract_clip_thumbnail(src=video_dst, dst=thumb_dst, time_s=1.0)
+
+            # Update DB with new file paths
+            from sqlmodel import Session
+            from app.models import utcnow
+            with Session(svc.engine) as session:
+                db_clip = session.get(type(clip), clip.id)
+                if db_clip:
+                    db_clip.video_file = str(video_dst)
+                    db_clip.thumbnail_file = str(thumb_dst)
+                    db_clip.updated_at = utcnow()
+                    session.add(db_clip)
+                    session.commit()
+        except Exception as exc:
+            logger.error("Background re-render after chat edit failed: %s", exc)
+
+    threading.Thread(target=_run, daemon=True).start()
 
 
 @router.get("/projects/{project_id}/clips", response_model=list[ClipOut])
@@ -335,3 +441,60 @@ def delete_clip(clip_id: str, svc: Services = Depends(get_services)) -> Response
         (svc.workspace.videos_dir / project.video_id / f"seo_{clip.id}.json").unlink(missing_ok=True)
     repo.delete_clip(svc.engine, clip_id)
     return Response(status_code=204)
+
+
+@router.post("/clips/{clip_id}/chat-edit")
+def chat_edit_clip(
+    clip_id: str,
+    body: ChatEditRequest,
+    svc: Services = Depends(get_services),
+) -> ChatEditResponse:
+    """AI natural-language clip editor. Parses instruction, applies edits, triggers re-render."""
+    from app.pipeline.chat_editor import apply_edit_command, parse_edit_instruction
+
+    clip = repo.get_clip(svc.engine, clip_id)
+    if clip is None:
+        raise HTTPException(404, "Clip not found")
+
+    cmd = parse_edit_instruction(
+        instruction=body.instruction,
+        clip_start_s=clip.start_s,
+        clip_end_s=clip.end_s,
+        clip_title=clip.title,
+        clip_hook=clip.hook_text,
+        engine=svc.engine,
+    )
+
+    changes = apply_edit_command(cmd, clip)
+    rerender = bool(changes)
+
+    if changes:
+        from sqlmodel import Session
+        with Session(svc.engine) as session:
+            db_clip = session.get(type(clip), clip_id)
+            if db_clip:
+                for k, v in changes.items():
+                    setattr(db_clip, k, v)
+                db_clip.updated_at = __import__("app.models", fromlist=["utcnow"]).utcnow()
+                session.add(db_clip)
+                session.commit()
+
+        # Trigger async re-render via existing rerender_clip logic
+        if rerender:
+            try:
+                _trigger_rerender(clip_id, svc)
+            except Exception as exc:
+                logger.warning("Re-render trigger failed after chat edit: %s", exc)
+                rerender = False
+
+    summary = cmd.summary
+    if not summary and changes:
+        summary = "Applied: " + ", ".join(f"{k}={v}" for k, v in changes.items())
+
+    return ChatEditResponse(
+        understood=cmd.understood,
+        intent=cmd.intent,
+        summary=summary,
+        changes=changes,
+        rerender_triggered=rerender,
+    )

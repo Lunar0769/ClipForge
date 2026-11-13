@@ -139,6 +139,18 @@ class ExportRequest(BaseModel):
     clip_ids: list[str] = []
 
 
+class ChatEditRequest(BaseModel):
+    instruction: str
+
+
+class ChatEditResponse(BaseModel):
+    understood: bool
+    intent: str
+    summary: str
+    changes: dict[str, Any]
+    rerender_triggered: bool
+
+
 def clip_out(clip: Clip, seo_data: dict[str, Any] | None = None) -> ClipOut:
     out = ClipOut.model_validate(clip)
     if seo_data:

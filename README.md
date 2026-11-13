@@ -136,6 +136,7 @@ Every project card shows how much disk it uses, and the home page shows the tota
 - [x] **Phase 6.5 — Multilingual Dubbing & Audio Polish:** Edge-TTS neural speech synthesis (ES, DE, FR, HI, JA, PT, IT), time-aligned audio ducking mix, and translated kinetic subtitles
 - [x] **Phase 7 — Smart 9:16 Multi-Layout Reframe Engine:** Fit+Blur backdrop, Speaker Track full-bleed crop, Split Screen 50/50 dual stack, and Gaming Cam (facecam top + gameplay screen)
 - [x] **Phase 8 — AI Filler Word & Silence Jump-Cut Trimmer:** Vocal disfluency removal ("um", "uh", "ah"), dead-air pause compression (>0.75s to 0.15s), synchronized subtitle timestamp re-alignment, and fast-paced studio toggle
+- [x] **Phase 9 — AI Natural Language Chat Editor (Cardboard.ai Killer):** Prompt-driven clip editing ("cut dead air", "neon captions", "trim 3s", "energetic music"), real-time structured command parsing, automated background re-render pipeline, and interactive studio chat panel with instant suggestions
 - [x] **v1.0 — Speaker Track face tracking:** MediaPipe face detection, shot-cut aware camera path with deadzone + easing, per-frame crop; falls back to Fit+Blur when no face is found
 - [x] **v1.0 — Storage cleanup & updates:** per-project disk usage, delete clip / delete project, in-app update notice and `update.ps1`
 - [ ] **Next:** speaker diarization for multi-person podcasts, faster tracking

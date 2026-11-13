@@ -17,10 +17,12 @@ import {
   Globe,
   LayoutTemplate,
   Zap,
+  Bot,
 } from "lucide-react";
 import clsx from "clsx";
 import type { Clip, Project } from "../../lib/types";
 import { api } from "../../lib/api";
+import { AIChatPanel } from "./AIChatPanel";
 
 interface ClipEditorModalProps {
   clip: Clip;
@@ -56,6 +58,7 @@ export function ClipEditorModal({
   const [layoutMode, setLayoutMode] = useState<string>(clip.layout_mode || "fit_blur");
   const [fillerTrim, setFillerTrim] = useState(clip.filler_trim === true);
 
+  const [activeTab, setActiveTab] = useState<"edit" | "ai">("edit");
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
@@ -222,6 +225,36 @@ export function ClipEditorModal({
             </button>
           </div>
 
+          {/* Tab Bar */}
+          <div className="flex border-b border-border/70 bg-surface-2/40 px-5">
+            <button
+              type="button"
+              onClick={() => setActiveTab("edit")}
+              className={clsx(
+                "flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition",
+                activeTab === "edit"
+                  ? "border-violet-brand text-violet-300"
+                  : "border-transparent text-muted hover:text-fg"
+              )}
+            >
+              <Scissors className="size-3.5" />
+              Edit
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("ai")}
+              className={clsx(
+                "flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition",
+                activeTab === "ai"
+                  ? "border-violet-brand text-violet-300"
+                  : "border-transparent text-muted hover:text-fg"
+              )}
+            >
+              <Bot className="size-3.5" />
+              AI Edit
+            </button>
+          </div>
+
           {/* Modal Body: Two-column layout */}
           <div className="flex-1 overflow-y-auto p-4 sm:p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
             {/* Left Column: 9:16 Video Player & Timeline */}
@@ -277,6 +310,15 @@ export function ClipEditorModal({
 
             {/* Right Column: Timeline Controls, Hook Editor, Subtitles & Audio Polish */}
             <div className="lg:col-span-7 flex flex-col space-y-4">
+              {activeTab === "ai" ? (
+                <div className="h-[420px] flex flex-col rounded-2xl border border-border/80 overflow-hidden">
+                  <AIChatPanel
+                    clipId={clip.id}
+                    onEditApplied={() => setVideoKey((k) => k + 1)}
+                  />
+                </div>
+              ) : (
+                <>
               {/* Timeline Trimming Card */}
               <div className="rounded-2xl border border-border/80 bg-surface-2/40 p-4 space-y-3">
                 <div className="flex items-center justify-between">
@@ -620,6 +662,8 @@ export function ClipEditorModal({
                   <Check className="size-4 shrink-0" />
                   <span>Clip successfully trimmed and re-rendered!</span>
                 </div>
+              )}
+              </>
               )}
             </div>
           </div>

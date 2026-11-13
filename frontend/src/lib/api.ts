@@ -125,6 +125,21 @@ export const api = {
       }),
     });
   },
+  chatEditClip: async (clipId: string, instruction: string) => {
+    const res = await fetch(`${BASE}/clips/${clipId}/chat-edit`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ instruction }),
+    });
+    if (!res.ok) throw new Error(await res.text());
+    return res.json() as Promise<{
+      understood: boolean;
+      intent: string;
+      summary: string;
+      changes: Record<string, unknown>;
+      rerender_triggered: boolean;
+    }>;
+  },
   getSettings: () => request<AppSettings>("/settings"),
   updateSettings: (updates: {
     provider?: string | null;
