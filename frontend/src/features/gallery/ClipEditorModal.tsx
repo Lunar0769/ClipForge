@@ -28,6 +28,7 @@ interface ClipEditorModalProps {
   clip: Clip;
   project: Project;
   isOpen: boolean;
+  initialTab?: "edit" | "ai";
   onClose: () => void;
   onClipUpdated: (updated: Clip) => void;
 }
@@ -42,6 +43,7 @@ export function ClipEditorModal({
   clip,
   project,
   isOpen,
+  initialTab = "ai",
   onClose,
   onClipUpdated,
 }: ClipEditorModalProps) {
@@ -58,11 +60,17 @@ export function ClipEditorModal({
   const [layoutMode, setLayoutMode] = useState<string>(clip.layout_mode || "fit_blur");
   const [fillerTrim, setFillerTrim] = useState(clip.filler_trim === true);
 
-  const [activeTab, setActiveTab] = useState<"edit" | "ai">("edit");
+  const [activeTab, setActiveTab] = useState<"edit" | "ai">(initialTab);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isRendering, setIsRendering] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   const [successNotice, setSuccessNotice] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveTab(initialTab);
+    }
+  }, [isOpen, initialTab]);
   const [videoKey, setVideoKey] = useState(0);
 
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -226,32 +234,33 @@ export function ClipEditorModal({
           </div>
 
           {/* Tab Bar */}
-          <div className="flex border-b border-border/70 bg-surface-2/40 px-5">
-            <button
-              type="button"
-              onClick={() => setActiveTab("edit")}
-              className={clsx(
-                "flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition",
-                activeTab === "edit"
-                  ? "border-violet-brand text-violet-300"
-                  : "border-transparent text-muted hover:text-fg"
-              )}
-            >
-              <Scissors className="size-3.5" />
-              Edit
-            </button>
+          <div className="flex border-b border-border/70 bg-surface-2/40 px-5 gap-1">
             <button
               type="button"
               onClick={() => setActiveTab("ai")}
               className={clsx(
-                "flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition",
+                "flex items-center gap-1.5 px-4 py-2.5 text-xs font-semibold border-b-2 transition",
                 activeTab === "ai"
-                  ? "border-violet-brand text-violet-300"
-                  : "border-transparent text-muted hover:text-fg"
+                  ? "border-violet-brand text-violet-300 bg-violet-brand/10"
+                  : "border-transparent text-muted hover:text-fg hover:bg-surface-2"
               )}
             >
-              <Bot className="size-3.5" />
-              AI Edit
+              <Bot className="size-3.5 text-violet-400" />
+              <span>AI Chat Editor</span>
+              <span className="rounded-full bg-violet-brand/25 text-violet-300 px-1.5 py-0.5 text-[9px] font-mono uppercase tracking-wide">Cardboard Mode</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab("edit")}
+              className={clsx(
+                "flex items-center gap-1.5 px-4 py-2.5 text-xs font-medium border-b-2 transition",
+                activeTab === "edit"
+                  ? "border-violet-brand text-violet-300 bg-violet-brand/10"
+                  : "border-transparent text-muted hover:text-fg hover:bg-surface-2"
+              )}
+            >
+              <Scissors className="size-3.5" />
+              <span>Manual Timeline Controls</span>
             </button>
           </div>
 
@@ -311,7 +320,7 @@ export function ClipEditorModal({
             {/* Right Column: Timeline Controls, Hook Editor, Subtitles & Audio Polish */}
             <div className="lg:col-span-7 flex flex-col space-y-4">
               {activeTab === "ai" ? (
-                <div className="h-[420px] flex flex-col rounded-2xl border border-border/80 overflow-hidden">
+                <div className="h-[500px] flex flex-col rounded-2xl border border-border/80 overflow-hidden bg-surface shadow-inner">
                   <AIChatPanel
                     clipId={clip.id}
                     onEditApplied={() => setVideoKey((k) => k + 1)}

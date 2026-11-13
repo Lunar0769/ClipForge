@@ -22,6 +22,7 @@ import {
   Trash2,
   Globe,
   Zap,
+  Bot,
 } from "lucide-react";
 import clsx from "clsx";
 import type { Clip, SeoPack, SubScores } from "../../lib/types";
@@ -233,6 +234,7 @@ function ClipCard({ clip, project, index, isSelected, onSelect }: ClipCardProps)
   const [isPlaying, setIsPlaying] = useState(false);
   const [showVideoModal, setShowVideoModal] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
+  const [editorTab, setEditorTab] = useState<"edit" | "ai">("ai");
   const [currentStyle, setCurrentStyle] = useState(clip.subtitle_style || "hormozi");
   const [autoZoom, setAutoZoom] = useState(clip.auto_zoom !== false);
   const [musicMood, setMusicMood] = useState<string | null>(clip.music_mood || null);
@@ -557,17 +559,31 @@ function ClipCard({ clip, project, index, isSelected, onSelect }: ClipCardProps)
             <span>{expanded ? "Hide Details" : "SEO & Sub-scores"}</span>
           </button>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-1.5">
             {hasVideo && (
               <>
                 <button
                   type="button"
                   onClick={(e) => {
                     e.stopPropagation();
+                    setEditorTab("ai");
                     setShowEditor(true);
                   }}
-                  className="inline-flex items-center gap-1 rounded-full bg-cyan-500/15 px-2.5 py-1 text-[11px] font-medium text-cyan-300 transition hover:bg-cyan-500 hover:text-white"
-                  title="Trim timeline, tune hook card, and polish clip"
+                  className="inline-flex items-center gap-1.5 rounded-full bg-violet-brand px-3 py-1 text-[11px] font-semibold text-white shadow-sm shadow-violet-brand/40 transition hover:bg-violet-600 hover:shadow-violet-brand/60 active:scale-95"
+                  title="Cardboard AI Editor: Type plain-English instructions to edit"
+                >
+                  <Bot className="size-3 text-white" />
+                  <span>Edit with AI</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEditorTab("edit");
+                    setShowEditor(true);
+                  }}
+                  className="inline-flex items-center gap-1 rounded-full bg-cyan-500/15 border border-cyan-500/30 px-2.5 py-1 text-[11px] font-medium text-cyan-300 transition hover:bg-cyan-500 hover:text-white"
+                  title="Manual trim timeline, tune hook card, and polish clip"
                 >
                   <Scissors className="size-3" />
                   <span>Trim</span>
@@ -576,7 +592,7 @@ function ClipCard({ clip, project, index, isSelected, onSelect }: ClipCardProps)
                   href={downloadUrl}
                   download
                   onClick={(e) => e.stopPropagation()}
-                  className="inline-flex items-center gap-1 rounded-full bg-violet-brand/15 px-2.5 py-1 text-[11px] font-medium text-violet-300 transition hover:bg-violet-brand hover:text-white"
+                  className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-1 text-[11px] font-medium text-muted hover:text-fg hover:bg-surface-3 transition"
                   title="Download 9:16 Short MP4"
                 >
                   <Download className="size-3" />
@@ -697,6 +713,7 @@ function ClipCard({ clip, project, index, isSelected, onSelect }: ClipCardProps)
         clip={clip}
         project={project}
         isOpen={showEditor}
+        initialTab={editorTab}
         onClose={() => setShowEditor(false)}
         onClipUpdated={() => {
           setVideoKey((k) => k + 1);
