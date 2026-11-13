@@ -129,15 +129,20 @@ def build_master_supercut(
         music_idx = num_inputs
 
     # Build filtergraph
-    # 1. Concat all clip slices
-    concat_inputs = "".join(f"[{i}:v][{i}:a]" for i in range(num_inputs))
-    filter_chains = [
-        f"{concat_inputs}concat=n={num_inputs}:v=1:a=1[v_concat][a_concat]"
-    ]
+    # 1. Normalize each input stream's SAR, framerate, and audio sample rate before concatenation
+    # to avoid FFmpeg link parameter mismatches (e.g. SAR or sample rate variations across trims)
+    norm_chains: list[str] = []
+    for i in range(num_inputs):
+        norm_chains.append(f"[{i}:v]scale=1080:1920,setsar=1,fps=30[v{i}_norm]")
+        norm_chains.append(f"[{i}:a]aformat=sample_rates=44100:channel_layouts=stereo,aresample=async=1[a{i}_norm]")
 
-    # 2. Cinematic lighting & color grading
+    concat_inputs = "".join(f"[v{i}_norm][a{i}_norm]" for i in range(num_inputs))
     grade_preset = COLOR_GRADES.get(color_grade, COLOR_GRADES["cinematic"])
-    filter_chains.append(f"[v_concat]{grade_preset}[v_graded]")
+    filter_chains = [
+        *norm_chains,
+        f"{concat_inputs}concat=n={num_inputs}:v=1:a=1[v_concat][a_concat]",
+        f"[v_concat]{grade_preset}[v_graded]",
+    ]
 
     # 3. Audio mixing with dramatic soundtrack
     audio_maps: list[str] = []
