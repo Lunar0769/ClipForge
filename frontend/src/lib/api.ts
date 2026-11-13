@@ -140,6 +140,24 @@ export const api = {
       rerender_triggered: boolean;
     }>;
   },
+  createSuperCut: (
+    projectId: string,
+    options?: {
+      max_duration_s?: number;
+      color_grade?: string;
+      music_mood?: string;
+      clip_ids?: string[];
+    }
+  ) =>
+    request<Clip>(`/projects/${projectId}/supercut`, {
+      method: "POST",
+      body: JSON.stringify({
+        max_duration_s: options?.max_duration_s ?? 60.0,
+        color_grade: options?.color_grade ?? "cinematic",
+        music_mood: options?.music_mood ?? "suspense",
+        clip_ids: options?.clip_ids ?? [],
+      }),
+    }),
   getSettings: () => request<AppSettings>("/settings"),
   updateSettings: (updates: {
     provider?: string | null;

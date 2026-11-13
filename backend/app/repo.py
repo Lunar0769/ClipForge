@@ -158,6 +158,14 @@ def get_clip(engine: Engine, clip_id: str) -> Clip | None:
         return s.get(Clip, clip_id)
 
 
+def add_clip(engine: Engine, clip: Clip) -> Clip:
+    with _session(engine) as s:
+        s.add(clip)
+        s.commit()
+    with _session(engine) as s:
+        return s.get(Clip, clip.id)
+
+
 def update_clip(engine: Engine, clip_id: str, **fields) -> Clip:
     with _session(engine) as s:
         clip = s.get(Clip, clip_id)

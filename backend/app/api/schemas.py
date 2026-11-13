@@ -97,6 +97,8 @@ class ClipOut(BaseModel):
     dubbed_audio_file: str | None = None
     layout_mode: str | None = "track"
     filler_trim: bool | None = False
+    color_grade: str | None = None
+    is_supercut: bool | None = False
     seo: SeoPack | None = None
     created_at: datetime
     updated_at: datetime
@@ -114,6 +116,7 @@ class ClipRenderRequest(BaseModel):
     target_language: str | None = None
     layout_mode: str | None = None
     filler_trim: bool | None = None
+    color_grade: str | None = None
     start_s: float | None = None
     end_s: float | None = None
     title: str | None = None
@@ -132,6 +135,14 @@ class ClipUpdateRequest(BaseModel):
     target_language: str | None = None
     layout_mode: str | None = None
     filler_trim: bool | None = None
+    color_grade: str | None = None
+
+
+class SuperCutRequest(BaseModel):
+    max_duration_s: float = 60.0
+    color_grade: str = "cinematic"
+    music_mood: str = "suspense"
+    clip_ids: list[str] = []
 
 
 

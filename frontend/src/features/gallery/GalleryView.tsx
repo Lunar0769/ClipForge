@@ -320,7 +320,9 @@ function ClipCard({ clip, project, index, isSelected, onSelect }: ClipCardProps)
         onClick={onSelect}
         className={clsx(
           "group relative flex flex-col justify-between rounded-2xl border bg-surface p-4 transition-all duration-200 cursor-pointer shadow-sm",
-          isSelected
+          clip.is_supercut
+            ? "border-amber-500/60 bg-gradient-to-b from-amber-500/[0.08] to-surface shadow-md shadow-amber-500/10 ring-1 ring-amber-500/40"
+            : isSelected
             ? "border-violet-brand ring-1 ring-violet-brand shadow-violet-brand/10"
             : "border-border hover:border-violet-brand/50 hover:shadow-md hover:shadow-violet-brand/5"
         )}
@@ -329,10 +331,22 @@ function ClipCard({ clip, project, index, isSelected, onSelect }: ClipCardProps)
           {/* Top Header: Rank, Duration, Virality Score */}
           <div className="flex items-start justify-between gap-3 mb-2.5">
             <div className="flex items-center gap-2">
-              <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-0.5 text-[11px] font-semibold text-fg/90">
-                <TrendingUp className="size-3 text-violet-brand" />
-                #{clip.rank + 1}
-              </span>
+              {clip.is_supercut ? (
+                <span className="inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-amber-500/25 to-rose-500/25 border border-amber-500/40 px-2.5 py-0.5 text-[11px] font-bold text-amber-300 shadow-sm shadow-amber-500/20">
+                  <Sparkles className="size-3 text-amber-400" />
+                  🎬 Master Super-Cut
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2.5 py-0.5 text-[11px] font-semibold text-fg/90">
+                  <TrendingUp className="size-3 text-violet-brand" />
+                  #{clip.rank + 1}
+                </span>
+              )}
+              {clip.color_grade && (
+                <span className="inline-flex items-center gap-1 rounded-full bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 text-[10px] font-semibold text-rose-300 uppercase">
+                  ✨ {clip.color_grade}
+                </span>
+              )}
               <span className="font-mono text-xs text-muted">
                 {fmtDuration(clip.start_s, clip.end_s)}
               </span>
@@ -739,13 +753,35 @@ export default function GalleryView({
   onSelectClip,
   isCompactGrid = false,
 }: GalleryViewProps) {
+  const queryClient = useQueryClient();
   const [filter, setFilter] = useState<"all" | "high" | "short">("all");
+  const [isCreatingSupercut, setIsCreatingSupercut] = useState(false);
+  const [supercutError, setSupercutError] = useState<string | null>(null);
 
   const { data: clips, isLoading, isError } = useQuery({
     queryKey: ["clips", project.id],
     queryFn: () => api.listClips(project.id),
     staleTime: 30_000,
   });
+
+  const handleCreateSupercut = async () => {
+    if (isCreatingSupercut) return;
+    setIsCreatingSupercut(true);
+    setSupercutError(null);
+    try {
+      await api.createSuperCut(project.id, {
+        max_duration_s: 60.0,
+        color_grade: "cinematic",
+        music_mood: "suspense",
+      });
+      void queryClient.invalidateQueries({ queryKey: ["clips", project.id] });
+      void queryClient.invalidateQueries({ queryKey: ["project", project.id] });
+    } catch (err) {
+      setSupercutError(err instanceof Error ? err.message : "Failed to compile master super-cut.");
+    } finally {
+      setIsCreatingSupercut(false);
+    }
+  };
 
   const filteredClips = useMemo(() => {
     if (!clips) return [];
@@ -833,6 +869,26 @@ export default function GalleryView({
             </button>
           </div>
 
+          <button
+            type="button"
+            onClick={handleCreateSupercut}
+            disabled={isCreatingSupercut}
+            className="inline-flex items-center gap-1.5 rounded-full bg-gradient-to-r from-amber-500 via-rose-500 to-violet-600 px-3.5 py-1.5 text-xs font-semibold text-white shadow-md shadow-amber-500/20 transition hover:opacity-95 hover:shadow-amber-500/40 disabled:opacity-50 cursor-pointer"
+            title="Compile top clips into a single cinematic master highlight reel with film curves, vignette, and suspense soundtrack"
+          >
+            {isCreatingSupercut ? (
+              <>
+                <RefreshCw className="size-3.5 animate-spin" />
+                <span>Compiling Super-Cut...</span>
+              </>
+            ) : (
+              <>
+                <Film className="size-3.5" />
+                <span>🎬 AI Master Super-Cut</span>
+              </>
+            )}
+          </button>
+
           <a
             href={api.exportProjectUrl(project.id)}
             download
@@ -844,6 +900,24 @@ export default function GalleryView({
           </a>
         </div>
       </div>
+
+      {/* Supercut Progress Banner */}
+      {isCreatingSupercut && (
+        <div className="flex items-center gap-3 rounded-xl border border-amber-500/40 bg-gradient-to-r from-amber-500/10 via-rose-500/10 to-violet-500/10 p-4 text-xs text-amber-200 backdrop-blur-sm shadow-md shadow-amber-500/5">
+          <RefreshCw className="size-5 animate-spin text-amber-400 shrink-0" />
+          <div>
+            <div className="font-semibold text-amber-300">Generating 9:16 Cinematic Master Super-Cut...</div>
+            <div className="text-muted-fg mt-0.5">Stitching top candidate moments, applying teal/orange film curves & vignette, mixing suspense soundtrack, and synchronizing kinetic captions.</div>
+          </div>
+        </div>
+      )}
+
+      {supercutError && (
+        <div className="flex items-center justify-between gap-3 rounded-xl border border-red-500/40 bg-red-500/10 p-3 text-xs text-red-200">
+          <span>{supercutError}</span>
+          <button type="button" onClick={() => setSupercutError(null)} className="text-red-400 hover:text-red-200 font-bold">Dismiss</button>
+        </div>
+      )}
 
       {/* Responsive Box Grid Layout */}
       <div className={clsx("grid gap-4", isCompactGrid ? "grid-cols-1 md:grid-cols-2" : "grid-cols-1 md:grid-cols-2 xl:grid-cols-2")}>

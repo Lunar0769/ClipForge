@@ -56,6 +56,19 @@ MOOD_PRESETS: dict[str, str] = {
     "suspense": "0.04*sin(2*PI*55*t) + 0.03*sin(2*PI*58.2*t) + 0.02*sin(2*PI*116*t)",
 }
 
+COLOR_GRADES: dict[str, str] = {
+    # Cinematic movie look: teal & orange filmic curves, rich contrast, subtle vignette
+    "cinematic": "eq=contrast=1.18:brightness=-0.02:saturation=1.15,colorbalance=rs=0.04:gs=0.01:bs=-0.04:rm=0.02:gm=-0.02:bm=0.04,vignette=PI/4",
+    # Dramatic thriller: deep blacks, punchy shadows, desaturated cool tones
+    "dramatic": "eq=contrast=1.28:brightness=-0.05:saturation=0.92,colorbalance=rs=-0.02:gs=-0.02:bs=0.06:rm=-0.02:gm=-0.02:bm=0.04,vignette=PI/3.5",
+    # Warm golden hour: warm skin tones, golden sunlight highlights
+    "warm": "eq=contrast=1.08:brightness=0.02:saturation=1.12,colorbalance=rs=0.08:gs=0.03:bs=-0.06:rm=0.06:gm=0.02:bm=-0.06",
+    # Vibrant pop: punchy modern saturation
+    "vibrant": "eq=contrast=1.14:brightness=0.01:saturation=1.35",
+    # Film Noir: classic monochrome
+    "noir": "hue=s=0,eq=contrast=1.32:brightness=-0.04",
+}
+
 
 def render_clip_video(
     src: Path,
@@ -71,6 +84,7 @@ def render_clip_video(
     layout_mode: str = "fit_blur",
     keep_intervals: list[tuple[float, float]] | None = None,
     track: TrackPlan | None = None,
+    color_grade: str | None = None,
     cancel: threading.Event | None = None,
 ) -> None:
     """Renders a single 9:16 vertical video slice from src to dst with layout framing, optional ASS subtitles, dynamic punch-in zoom, mood audio bed, B-roll cutaways, dubbed audio, and jump-cut silence/filler trimming."""
@@ -140,6 +154,12 @@ def render_clip_video(
         v_sel, _ = build_jumpcut_select_filter(keep_intervals, start_s)
         filter_chains.append(f"[{curr_comp}]{v_sel}[cut_v]")
         curr_comp = "cut_v"
+
+    # Cinematic Color Grading & Lighting Filter
+    if color_grade and color_grade in COLOR_GRADES:
+        grade_filter = COLOR_GRADES[color_grade]
+        filter_chains.append(f"[{curr_comp}]{grade_filter}[graded_v]")
+        curr_comp = "graded_v"
 
     # Subtitles on top of all visual layers
     if ass_file and ass_file.exists():
@@ -430,6 +450,7 @@ class RenderStage:
                     layout_mode=layout_mode,
                     keep_intervals=keep_intervals,
                     track=track,
+                    color_grade=clip.color_grade,
                     cancel=ctx.cancel_event,
                 )
 

@@ -89,5 +89,7 @@ class Clip(SQLModel, table=True):
     dubbed_audio_file: str | None = None
     layout_mode: str | None = Field(default="track", nullable=True)
     filler_trim: bool | None = Field(default=False, nullable=True)
+    color_grade: str | None = Field(default=None, nullable=True)
+    is_supercut: bool | None = Field(default=False, nullable=True)
     created_at: datetime = Field(default_factory=utcnow)
     updated_at: datetime = Field(default_factory=utcnow)

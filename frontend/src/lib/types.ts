@@ -133,6 +133,8 @@ export interface Clip {
   dubbed_audio_file?: string | null;
   layout_mode?: "fit_blur" | "track" | "split" | "gaming" | string | null;
   filler_trim?: boolean | null;
+  color_grade?: string | null;
+  is_supercut?: boolean | null;
   seo: SeoPack | null;
   created_at: string;
   updated_at: string;

@@ -15,10 +15,12 @@ from app.api.schemas import (
     ClipOut,
     ClipRenderRequest,
     ClipUpdateRequest,
+    SuperCutRequest,
     clip_out,
 )
 from app.pipeline.captions import write_clip_ass_file
 from app.pipeline.render import DEFAULT_LAYOUT, extract_clip_thumbnail, plan_layout, render_clip_video
+from app.pipeline.supercut import build_master_supercut
 from app.pipeline.transcript import Transcript
 
 logger = logging.getLogger(__name__)
@@ -122,6 +124,7 @@ def _trigger_rerender(clip_id: str, svc: Services) -> None:
                 broll_cues=clip.broll_cues,
                 layout_mode=clip.layout_mode or "track",
                 keep_intervals=keep_intervals,
+                color_grade=clip.color_grade,
             )
 
             extract_clip_thumbnail(src=video_dst, dst=thumb_dst, time_s=1.0)
@@ -150,6 +153,36 @@ def list_clips(project_id: str, svc: Services = Depends(get_services)) -> list[C
         raise HTTPException(404, "Project not found")
     clips = repo.list_clips(svc.engine, project_id)
     return [clip_out(c, _seo_data(svc, c.id, project_id)) for c in clips]
+
+
+@router.post("/projects/{project_id}/supercut", response_model=ClipOut)
+def create_supercut(
+    project_id: str,
+    req: SuperCutRequest = SuperCutRequest(),
+    svc: Services = Depends(get_services),
+) -> ClipOut:
+    """Generate a master highlight supercut video combining top candidate moments with cinematic grading."""
+    project = repo.get_project(svc.engine, project_id)
+    if project is None:
+        raise HTTPException(404, "Project not found")
+
+    try:
+        clip = build_master_supercut(
+            engine=svc.engine,
+            project_id=project_id,
+            workspace=svc.workspace,
+            settings=svc.settings,
+            max_duration_s=req.max_duration_s,
+            color_grade=req.color_grade,
+            music_mood=req.music_mood,
+            selected_clip_ids=req.clip_ids if req.clip_ids else None,
+        )
+        return clip_out(clip, _seo_data(svc, clip.id, project_id))
+    except ValueError as val_err:
+        raise HTTPException(400, str(val_err))
+    except Exception as exc:
+        logger.error("Supercut generation failed: %s", exc, exc_info=True)
+        raise HTTPException(500, f"Supercut generation failed: {exc}")
 
 
 @router.get("/clips/{clip_id}", response_model=ClipOut)
@@ -248,6 +281,8 @@ def update_clip(
         updates["layout_mode"] = req.layout_mode
     if req.filler_trim is not None:
         updates["filler_trim"] = req.filler_trim
+    if req.color_grade is not None:
+        updates["color_grade"] = req.color_grade
 
     if updates:
         clip = repo.update_clip(svc.engine, clip.id, **updates)
@@ -287,6 +322,7 @@ def rerender_clip(
     target_language = keep("target_language", clip.target_language)
     requested_layout = keep("layout_mode", None) or clip.layout_mode or DEFAULT_LAYOUT
     filler_trim = bool(keep("filler_trim", clip.filler_trim))
+    color_grade = keep("color_grade", clip.color_grade)
 
     # Determine trim boundaries and titles
     start_s = req.start_s if req.start_s is not None else clip.start_s
@@ -393,6 +429,7 @@ def rerender_clip(
         layout_mode=layout_mode,
         keep_intervals=keep_intervals,
         track=track,
+        color_grade=color_grade,
     )
 
     # Refresh thumbnail
@@ -417,6 +454,7 @@ def rerender_clip(
         dubbed_audio_file=f"clips/{dubbed_audio_path.name}" if dubbed_audio_path and dubbed_audio_path.exists() else None,
         layout_mode=layout_mode,
         filler_trim=filler_trim,
+        color_grade=color_grade,
         start_s=start_s,
         end_s=end_s,
         title=title,

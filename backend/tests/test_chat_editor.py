@@ -209,3 +209,44 @@ def test_chat_edit_endpoint_applies_and_persists(settings, monkeypatch):
     refreshed = repo.get_clip(engine, "chat_clip_1")
     assert refreshed.subtitle_style == "neon"
     assert refreshed.filler_trim is True
+
+
+def test_cinematic_typo_tolerant_nlp_user_prompt():
+    """Verify the exact user query 'make it dramitic and make it cinamatic movie edit' succeeds instantly."""
+    mock_engine = MagicMock()
+    cmd = parse_edit_instruction(
+        instruction="make it dramitic and make it cinamatic movie edit",
+        clip_start_s=10.0,
+        clip_end_s=30.0,
+        clip_title="Action Scene",
+        clip_hook="Wait for it",
+        engine=mock_engine,
+    )
+
+    assert cmd.understood is True
+    assert cmd.intent == "cinematic"
+    assert cmd.color_grade in ("cinematic", "dramatic")
+    assert cmd.music_mood == "suspense"
+    assert cmd.subtitle_style == "clean"
+    assert cmd.auto_zoom is True
+    assert "cinematic" in cmd.summary.lower() or "dramatic" in cmd.summary.lower()
+
+
+def test_cinematic_lighting_and_cinematography_nlp():
+    """Verify creative queries like 'proper lighting and cenamatography with render like profecional editor' succeed."""
+    mock_engine = MagicMock()
+    cmd = parse_edit_instruction(
+        instruction="proper lighting and cenamatography with render like profecional editor",
+        clip_start_s=0.0,
+        clip_end_s=15.0,
+        clip_title="Climax",
+        clip_hook="Unbelievable",
+        engine=mock_engine,
+    )
+
+    assert cmd.understood is True
+    assert cmd.intent == "cinematic"
+    assert cmd.color_grade == "cinematic"
+    assert cmd.music_mood == "suspense"
+    assert cmd.subtitle_style == "clean"
+
